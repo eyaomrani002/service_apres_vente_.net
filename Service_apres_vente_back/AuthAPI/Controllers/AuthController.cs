@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using AuthAPI.Models;
 using AuthAPI.Services;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Identity;
 
 namespace AuthAPI.Controllers
 {
@@ -12,11 +13,16 @@ namespace AuthAPI.Controllers
     {
         private readonly IAuthService _authService;
         private readonly IRefreshTokenService _refreshTokenService;
+        private readonly UserManager<ApplicationUser> _userManager;
 
-        public AuthController(IAuthService authService, IRefreshTokenService refreshTokenService)
+        public AuthController(
+            IAuthService authService,
+            IRefreshTokenService refreshTokenService,
+            UserManager<ApplicationUser> userManager)
         {
             _authService = authService;
             _refreshTokenService = refreshTokenService;
+            _userManager = userManager;
         }
 
         [HttpPost("register")]
@@ -188,11 +194,284 @@ namespace AuthAPI.Controllers
                 user.Email,
                 user.FirstName,
                 user.LastName,
+                user.PhoneNumber,
                 user.CreatedAt,
                 user.LastLoginAt,
                 user.IsActive,
+                user.FailedLoginAttempts,
+                user.LockoutEnd,
+                user.LastPasswordChange,
                 Roles = roles
             });
+        }
+
+        // ========== NOUVEAUX ENDPOINTS ==========
+
+        [Authorize]
+        [HttpPost("changepassword")]
+        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordModel model)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            try
+            {
+                var userId = User.FindFirst("uid")?.Value;
+                var success = await _authService.ChangePasswordAsync(userId, model);
+
+                if (!success)
+                    return BadRequest(new { message = "Password change failed. Check your old password." });
+
+                return Ok(new { message = "Password changed successfully" });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [Authorize]
+        [HttpPut("profile")]
+        public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileModel model)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            try
+            {
+                var userId = User.FindFirst("uid")?.Value;
+                var success = await _authService.UpdateProfileAsync(userId, model);
+
+                if (!success)
+                    return BadRequest(new { message = "Profile update failed" });
+
+                // Récupérer l'utilisateur mis à jour
+                var user = await _authService.GetUserByIdAsync(userId);
+                var roles = await _authService.GetUserRolesAsync(userId);
+
+                return Ok(new
+                {
+                    message = "Profile updated successfully",
+                    user = new
+                    {
+                        user.Id,
+                        user.UserName,
+                        user.Email,
+                        user.FirstName,
+                        user.LastName,
+                        user.PhoneNumber,
+                        Roles = roles
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("forgot-password")]
+        public async Task<IActionResult> ForgotPassword([FromBody] ResetPasswordModel model)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            try
+            {
+                var success = await _authService.ResetPasswordAsync(model);
+
+                // Pour des raisons de sécurité, on retourne toujours OK même si l'email n'existe pas
+                return Ok(new
+                {
+                    message = "If an account with that email exists, a password reset link has been sent."
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordConfirmModel model)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            try
+            {
+                var success = await _authService.ResetPasswordConfirmAsync(model);
+
+                if (!success)
+                    return BadRequest(new { message = "Password reset failed. The token may be invalid or expired." });
+
+                return Ok(new { message = "Password has been reset successfully" });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [Authorize(Roles = "Admin")]
+        [HttpPost("toggle-user/{userId}")]
+        public async Task<IActionResult> ToggleUserStatus(string userId)
+        {
+            try
+            {
+                var success = await _authService.ToggleUserStatusAsync(userId);
+
+                if (!success)
+                    return BadRequest(new { message = "Failed to toggle user status" });
+
+                var user = await _authService.GetUserByIdAsync(userId);
+
+                return Ok(new
+                {
+                    userId,
+                    isActive = user.IsActive,
+                    message = $"User {user.Email} is now {(user.IsActive ? "active" : "inactive")}"
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [Authorize]
+        [HttpGet("login-history")]
+        public async Task<IActionResult> GetLoginHistory([FromQuery] int days = 30)
+        {
+            try
+            {
+                var userId = User.FindFirst("uid")?.Value;
+                var audits = await _authService.GetLoginAuditsAsync(userId, days);
+
+                return Ok(new
+                {
+                    count = audits.Count,
+                    days,
+                    audits = audits.Select(a => new
+                    {
+                        a.LoginTime,
+                        a.Success,
+                        a.IPAddress,
+                        a.UserAgent,
+                        a.FailureReason
+                    })
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [Authorize]
+        [HttpGet("stats")]
+        public async Task<IActionResult> GetUserStats()
+        {
+            try
+            {
+                var userId = User.FindFirst("uid")?.Value;
+                var stats = await _authService.GetUserStatsAsync(userId);
+
+                return Ok(stats);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [Authorize(Roles = "Admin")]
+        [HttpGet("users")]
+        public async Task<IActionResult> GetAllUsers([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        {
+            try
+            {
+                var users = await _authService.GetAllUsersAsync(page, pageSize);
+                var totalUsers = await _authService.CountUsersAsync();
+
+                var userDtos = new List<object>();
+
+                foreach (var user in users)
+                {
+                    var roles = await _authService.GetUserRolesAsync(user.Id);
+                    userDtos.Add(new
+                    {
+                        user.Id,
+                        user.UserName,
+                        user.Email,
+                        user.FirstName,
+                        user.LastName,
+                        user.PhoneNumber,
+                        user.CreatedAt,
+                        user.LastLoginAt,
+                        user.IsActive,
+                        user.FailedLoginAttempts,
+                        user.LockoutEnd,
+                        user.LastPasswordChange,
+                        Roles = roles,
+                        PasswordAge = user.LastPasswordChange.HasValue
+                            ? (DateTime.UtcNow - user.LastPasswordChange.Value).Days
+                            : (DateTime.UtcNow - user.CreatedAt).Days
+                    });
+                }
+
+                return Ok(new
+                {
+                    total = totalUsers,
+                    page,
+                    pageSize,
+                    totalPages = (int)Math.Ceiling(totalUsers / (double)pageSize),
+                    users = userDtos
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [Authorize(Roles = "Admin")]
+        [HttpGet("user/{userId}")]
+        public async Task<IActionResult> GetUserById(string userId)
+        {
+            try
+            {
+                var user = await _authService.GetUserByIdAsync(userId);
+                if (user == null)
+                    return NotFound(new { message = "User not found" });
+
+                var roles = await _authService.GetUserRolesAsync(userId);
+                var audits = await _authService.GetLoginAuditsAsync(userId, 30);
+                var stats = await _authService.GetUserStatsAsync(userId);
+
+                return Ok(new
+                {
+                    user.Id,
+                    user.UserName,
+                    user.Email,
+                    user.FirstName,
+                    user.LastName,
+                    user.PhoneNumber,
+                    user.CreatedAt,
+                    user.LastLoginAt,
+                    user.IsActive,
+                    user.FailedLoginAttempts,
+                    user.LockoutEnd,
+                    user.LastPasswordChange,
+                    Roles = roles,
+                    RecentLogins = audits.Count,
+                    Stats = stats
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [Authorize(Roles = "Admin")]
@@ -249,6 +528,43 @@ namespace AuthAPI.Controllers
             });
         }
 
+        [Authorize]
+        [HttpGet("check-password-expiry")]
+        public async Task<IActionResult> CheckPasswordExpiry()
+        {
+            try
+            {
+                var userId = User.FindFirst("uid")?.Value;
+                var user = await _authService.GetUserByIdAsync(userId);
+
+                if (user == null)
+                    return NotFound(new { message = "User not found" });
+
+                var passwordExpiryDays = 90; // Valeur par défaut
+                var daysSinceLastChange = user.LastPasswordChange.HasValue
+                    ? (DateTime.UtcNow - user.LastPasswordChange.Value).Days
+                    : (DateTime.UtcNow - user.CreatedAt).Days;
+
+                var daysRemaining = passwordExpiryDays - daysSinceLastChange;
+                var requiresChange = daysRemaining <= 7 || user.PasswordChangeRequired;
+
+                return Ok(new
+                {
+                    requiresChange,
+                    daysSinceLastChange,
+                    daysRemaining,
+                    lastPasswordChange = user.LastPasswordChange,
+                    message = requiresChange
+                        ? $"Password will expire in {daysRemaining} days. Please change your password."
+                        : "Password is up to date."
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         private void SetRefreshTokenCookie(string refreshToken)
         {
             var cookieOptions = new CookieOptions
@@ -256,7 +572,7 @@ namespace AuthAPI.Controllers
                 HttpOnly = true,
                 Expires = DateTime.UtcNow.AddDays(7),
                 SameSite = SameSiteMode.Strict,
-                Secure = false,
+                Secure = Request.IsHttps,
                 Path = "/"
             };
 

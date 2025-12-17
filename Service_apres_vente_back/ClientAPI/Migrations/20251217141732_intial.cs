@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace ClientAPI.Migrations
 {
     /// <inheritdoc />
-    public partial class initialcreate : Migration
+    public partial class intial : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -41,7 +41,10 @@ namespace ClientAPI.Migrations
                     DateResolution = table.Column<DateTime>(type: "datetime2", nullable: true),
                     Statut = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false, defaultValue: "En attente"),
                     ClientId = table.Column<int>(type: "int", nullable: false),
-                    ArticleId = table.Column<int>(type: "int", nullable: false)
+                    ArticleId = table.Column<int>(type: "int", nullable: false),
+                    Priorite = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    TypeProbleme = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    PhotosUrls = table.Column<string>(type: "nvarchar(max)", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -54,22 +57,45 @@ namespace ClientAPI.Migrations
                         onDelete: ReferentialAction.Cascade);
                 });
 
+            migrationBuilder.CreateTable(
+                name: "ReclamationPiece",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Reference = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    Quantite = table.Column<int>(type: "int", nullable: false),
+                    Fournie = table.Column<bool>(type: "bit", nullable: false),
+                    ReclamationId = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ReclamationPiece", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ReclamationPiece_Reclamations_ReclamationId",
+                        column: x => x.ReclamationId,
+                        principalTable: "Reclamations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
             migrationBuilder.InsertData(
                 table: "Clients",
                 columns: new[] { "Id", "Adresse", "DateInscription", "Email", "Nom", "Telephone" },
                 values: new object[,]
                 {
-                    { 1, "Tunis, Tunisie", new DateTime(2025, 12, 2, 20, 9, 29, 352, DateTimeKind.Local).AddTicks(9316), "mohamed@example.com", "Mohamed Ben Ali", "12345678" },
-                    { 2, "Sousse, Tunisie", new DateTime(2025, 12, 2, 20, 9, 29, 352, DateTimeKind.Local).AddTicks(9367), "fatma@example.com", "Fatma Ahmed", "87654321" }
+                    { 1, "Tunis, Tunisie", new DateTime(2025, 12, 17, 15, 17, 31, 805, DateTimeKind.Local).AddTicks(8269), "mohamed@example.com", "Mohamed Ben Ali", "12345678" },
+                    { 2, "Sousse, Tunisie", new DateTime(2025, 12, 17, 15, 17, 31, 805, DateTimeKind.Local).AddTicks(8334), "fatma@example.com", "Fatma Ahmed", "87654321" }
                 });
 
             migrationBuilder.InsertData(
                 table: "Reclamations",
-                columns: new[] { "Id", "ArticleId", "ClientId", "DateCreation", "DateResolution", "Description", "Statut" },
+                columns: new[] { "Id", "ArticleId", "ClientId", "DateCreation", "DateResolution", "Description", "PhotosUrls", "Priorite", "Statut", "TypeProbleme" },
                 values: new object[,]
                 {
-                    { 1, 1, 1, new DateTime(2024, 1, 10, 0, 0, 0, 0, DateTimeKind.Unspecified), null, "Robinet qui fuit dans la salle de bain", "En cours" },
-                    { 2, 2, 2, new DateTime(2024, 1, 15, 0, 0, 0, 0, DateTimeKind.Unspecified), null, "Radiateur ne chauffe pas correctement", "En attente" }
+                    { 1, 1, 1, new DateTime(2024, 1, 10, 0, 0, 0, 0, DateTimeKind.Unspecified), null, "Robinet qui fuit dans la salle de bain", null, "Moyenne", "En cours", "Général" },
+                    { 2, 2, 2, new DateTime(2024, 1, 15, 0, 0, 0, 0, DateTimeKind.Unspecified), null, "Radiateur ne chauffe pas correctement", null, "Moyenne", "En attente", "Général" }
                 });
 
             migrationBuilder.CreateIndex(
@@ -77,6 +103,11 @@ namespace ClientAPI.Migrations
                 table: "Clients",
                 column: "Email",
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ReclamationPiece_ReclamationId",
+                table: "ReclamationPiece",
+                column: "ReclamationId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Reclamations_ClientId",
@@ -97,6 +128,9 @@ namespace ClientAPI.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(
+                name: "ReclamationPiece");
+
             migrationBuilder.DropTable(
                 name: "Reclamations");
 

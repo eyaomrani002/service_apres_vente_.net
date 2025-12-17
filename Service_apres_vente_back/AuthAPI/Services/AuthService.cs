@@ -1,12 +1,14 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using AuthAPI.Helpers;
+using AuthAPI.Models;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
-using AuthAPI.Helpers;
-using AuthAPI.Models;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
 using System.Security.Cryptography;
+using System.Text;
+using Microsoft.AspNetCore.Http;
 
 namespace AuthAPI.Services
 {
@@ -17,19 +19,28 @@ namespace AuthAPI.Services
         private readonly IRefreshTokenService _refreshTokenService;
         private readonly JWT _jwt;
         private readonly ApplicationDbContext _context;
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<AuthService> _logger;
+        private readonly IHttpContextAccessor _httpContextAccessor;
 
         public AuthService(
             UserManager<ApplicationUser> userManager,
             RoleManager<IdentityRole> roleManager,
             IRefreshTokenService refreshTokenService,
             IOptions<JWT> jwt,
-            ApplicationDbContext context)
+            ApplicationDbContext context,
+            IConfiguration configuration,
+            ILogger<AuthService> logger,
+            IHttpContextAccessor httpContextAccessor) // AJOUTER ce paramètre
         {
             _userManager = userManager;
             _roleManager = roleManager;
             _refreshTokenService = refreshTokenService;
             _jwt = jwt.Value;
             _context = context;
+            _configuration = configuration;
+            _logger = logger;
+            _httpContextAccessor = httpContextAccessor; // INITIALISER
         }
 
         public async Task<AuthModel> RegisterAsync(RegisterModel model)
@@ -46,7 +57,8 @@ namespace AuthAPI.Services
                 Email = model.Email,
                 FirstName = model.FirstName,
                 LastName = model.LastName,
-                EmailConfirmed = true // Pour faciliter les tests
+                EmailConfirmed = true,
+                CreatedAt = DateTime.UtcNow
             };
 
             var defaultRole = "Client";
@@ -74,6 +86,9 @@ namespace AuthAPI.Services
             user.LastLoginAt = DateTime.UtcNow;
             await _userManager.UpdateAsync(user);
 
+            // Enregistrer l'audit de création
+            await RecordLoginAudit(user, true, "Registration");
+
             return new AuthModel
             {
                 Email = user.Email,
@@ -95,20 +110,59 @@ namespace AuthAPI.Services
         {
             var authModel = new AuthModel();
 
+            // Vérifier les tentatives de connexion
+            if (!await CheckLoginAttempts(model.Email))
+            {
+                authModel.Message = "Account is temporarily locked. Try again later.";
+                return authModel;
+            }
+
             var user = await _userManager.FindByEmailAsync(model.Email);
 
             if (user is null || !await _userManager.CheckPasswordAsync(user, model.Password))
             {
+                // Enregistrer l'échec
+                await RecordFailedLogin(model.Email, "Invalid credentials");
+
+                // Mettre à jour le compteur dans l'utilisateur
+                if (user != null)
+                {
+                    user.FailedLoginAttempts++;
+                    if (user.FailedLoginAttempts >= 5)
+                    {
+                        user.LockoutEnd = DateTime.UtcNow.AddMinutes(15);
+                    }
+                    await _userManager.UpdateAsync(user);
+                    await RecordLoginAudit(user, false, "Invalid credentials");
+                }
+
                 authModel.Message = "Email or Password is incorrect!";
                 return authModel;
             }
 
-            // Vérifier si l'utilisateur est actif
+            // Vérifier si le compte est actif
             if (!user.IsActive)
             {
                 authModel.Message = "Account is deactivated. Please contact administrator.";
+                await RecordLoginAudit(user, false, "Account deactivated");
                 return authModel;
             }
+
+            // Vérifier si le compte est verrouillé
+            if (user.LockoutEnd.HasValue && user.LockoutEnd > DateTime.UtcNow)
+            {
+                authModel.Message = $"Account is locked until {user.LockoutEnd}";
+                await RecordLoginAudit(user, false, "Account locked");
+                return authModel;
+            }
+
+            // Réinitialiser les tentatives après succès
+            await ResetLoginAttempts(model.Email);
+            user.FailedLoginAttempts = 0;
+            user.LockoutEnd = null;
+
+            // Enregistrer l'audit de connexion
+            await RecordLoginAudit(user, true, "Login successful");
 
             var jwtSecurityToken = await CreateJwtToken(user);
             var refreshToken = await _refreshTokenService.GenerateRefreshToken(user.Id);
@@ -206,10 +260,16 @@ namespace AuthAPI.Services
             try
             {
                 await _refreshTokenService.RevokeAllRefreshTokens(userId);
+                var user = await _userManager.FindByIdAsync(userId);
+                if (user != null)
+                {
+                    await RecordLoginAudit(user, true, "Logout");
+                }
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Error during logout");
                 return false;
             }
         }
@@ -250,6 +310,16 @@ namespace AuthAPI.Services
             return await _userManager.FindByIdAsync(userId);
         }
 
+        public async Task<List<string>> GetUserRolesAsync(string userId)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+                return new List<string>();
+
+            var roles = await _userManager.GetRolesAsync(user);
+            return roles.ToList();
+        }
+
         private async Task<JwtSecurityToken> CreateJwtToken(ApplicationUser user)
         {
             var userClaims = await _userManager.GetClaimsAsync(user);
@@ -283,16 +353,7 @@ namespace AuthAPI.Services
 
             return jwtSecurityToken;
         }
-        // Ajoutez cette méthode dans la classe AuthService
-        public async Task<List<string>> GetUserRolesAsync(string userId)
-        {
-            var user = await _userManager.FindByIdAsync(userId);
-            if (user == null)
-                return new List<string>();
 
-            var roles = await _userManager.GetRolesAsync(user);
-            return roles.ToList();
-        }
         private ClaimsPrincipal GetPrincipalFromExpiredToken(string token)
         {
             var tokenValidationParameters = new TokenValidationParameters
@@ -301,7 +362,7 @@ namespace AuthAPI.Services
                 ValidateIssuer = false,
                 ValidateIssuerSigningKey = true,
                 IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwt.Key)),
-                ValidateLifetime = false // Important : on ignore l'expiration ici
+                ValidateLifetime = false
             };
 
             var tokenHandler = new JwtSecurityTokenHandler();
@@ -318,6 +379,289 @@ namespace AuthAPI.Services
             catch
             {
                 return null;
+            }
+        }
+
+        // ========== NOUVELLES MÉTHODES ==========
+
+        public async Task<bool> ChangePasswordAsync(string userId, ChangePasswordModel model)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+                throw new ArgumentException("User not found");
+
+            var result = await _userManager.ChangePasswordAsync(user, model.OldPassword, model.NewPassword);
+
+            if (result.Succeeded)
+            {
+                user.LastPasswordChange = DateTime.UtcNow;
+                user.PasswordChangeRequired = false;
+                await _userManager.UpdateAsync(user);
+
+                _logger.LogInformation($"Password changed for user: {user.Email}");
+                await RecordLoginAudit(user, true, "Password changed");
+                return true;
+            }
+
+            _logger.LogWarning($"Password change failed for user: {user.Email}");
+            return false;
+        }
+
+        public async Task<bool> UpdateProfileAsync(string userId, UpdateProfileModel model)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+                throw new ArgumentException("User not found");
+
+            user.FirstName = model.FirstName;
+            user.LastName = model.LastName;
+            user.PhoneNumber = model.PhoneNumber;
+
+            var result = await _userManager.UpdateAsync(user);
+
+            if (result.Succeeded)
+            {
+                await RecordLoginAudit(user, true, "Profile updated");
+            }
+
+            return result.Succeeded;
+        }
+
+        public async Task<bool> ResetPasswordAsync(ResetPasswordModel model)
+        {
+            var user = await _userManager.FindByEmailAsync(model.Email);
+            if (user == null || !user.IsActive)
+            {
+                // Pour la sécurité, on ne révèle pas si l'utilisateur existe
+                return true;
+            }
+
+            // Générer un token de réinitialisation
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+
+            // En production, vous enverriez un email ici
+            // Pour le développement, on loggue le token
+            _logger.LogInformation($"Reset password token for {user.Email}: {token}");
+            await RecordLoginAudit(user, true, "Password reset requested");
+
+            return true;
+        }
+
+        public async Task<bool> ResetPasswordConfirmAsync(ResetPasswordConfirmModel model)
+        {
+            var user = await _userManager.FindByEmailAsync(model.Email);
+            if (user == null || !user.IsActive)
+                return false;
+
+            var result = await _userManager.ResetPasswordAsync(user, model.Token, model.NewPassword);
+
+            if (result.Succeeded)
+            {
+                user.LastPasswordChange = DateTime.UtcNow;
+                user.FailedLoginAttempts = 0;
+                user.LockoutEnd = null;
+                await _userManager.UpdateAsync(user);
+
+                _logger.LogInformation($"Password reset successful for user: {user.Email}");
+                await RecordLoginAudit(user, true, "Password reset successful");
+                return true;
+            }
+
+            _logger.LogWarning($"Password reset failed for user: {user.Email}");
+            return false;
+        }
+
+        public async Task<bool> ToggleUserStatusAsync(string userId)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+                return false;
+
+            user.IsActive = !user.IsActive;
+            var result = await _userManager.UpdateAsync(user);
+
+            if (result.Succeeded)
+            {
+                _logger.LogInformation($"User {user.Email} status changed to {(user.IsActive ? "active" : "inactive")}");
+                await RecordLoginAudit(user, true, $"User status changed to {(user.IsActive ? "active" : "inactive")}");
+            }
+
+            return result.Succeeded;
+        }
+
+        public async Task<List<LoginAudit>> GetLoginAuditsAsync(string userId, int days = 30)
+        {
+            var cutoffDate = DateTime.UtcNow.AddDays(-days);
+
+            return await _context.LoginAudits
+                .Where(a => a.UserId == userId && a.LoginTime >= cutoffDate)
+                .OrderByDescending(a => a.LoginTime)
+                .ToListAsync();
+        }
+
+        public async Task<Dictionary<string, object>> GetUserStatsAsync(string userId)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+                return new Dictionary<string, object>();
+
+            var thirtyDaysAgo = DateTime.UtcNow.AddDays(-30);
+
+            var stats = new Dictionary<string, object>
+            {
+                ["totalLogins"] = await _context.LoginAudits
+                    .CountAsync(a => a.UserId == userId && a.Success),
+                ["failedLogins"] = await _context.LoginAudits
+                    .CountAsync(a => a.UserId == userId && !a.Success),
+                ["recentLogins"] = await _context.LoginAudits
+                    .CountAsync(a => a.UserId == userId && a.LoginTime >= thirtyDaysAgo),
+                ["lastLogin"] = user.LastLoginAt,
+                ["accountAge"] = (DateTime.UtcNow - user.CreatedAt).Days,
+                ["passwordAge"] = user.LastPasswordChange.HasValue
+                    ? (DateTime.UtcNow - user.LastPasswordChange.Value).Days
+                    : (DateTime.UtcNow - user.CreatedAt).Days,
+                ["isLocked"] = user.LockoutEnd.HasValue && user.LockoutEnd > DateTime.UtcNow
+            };
+
+            return stats;
+        }
+
+        public async Task<List<ApplicationUser>> GetAllUsersAsync(int page = 1, int pageSize = 20)
+        {
+            return await _userManager.Users
+                .OrderBy(u => u.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+        }
+
+        public async Task<int> CountUsersAsync()
+        {
+            return await _userManager.Users.CountAsync();
+        }
+
+        // ========== MÉTHODES PRIVÉES ==========
+
+        private async Task<bool> CheckLoginAttempts(string email)
+        {
+            var maxAttempts = _configuration.GetValue<int>("Auth:MaxLoginAttempts", 5);
+            var lockoutMinutes = _configuration.GetValue<int>("Auth:LockoutMinutes", 15);
+
+            var attempt = await _context.UserLoginAttempts
+                .FirstOrDefaultAsync(a => a.Email == email);
+
+            if (attempt == null)
+            {
+                attempt = new UserLoginAttempt { Email = email };
+                _context.UserLoginAttempts.Add(attempt);
+            }
+
+            // Vérifier si le compte est verrouillé
+            if (attempt.IsLockedOut)
+            {
+                _logger.LogWarning($"Account {email} is locked until {attempt.LockoutEnd}");
+                return false;
+            }
+
+            // Vérifier si on doit réinitialiser le compteur
+            var resetMinutes = _configuration.GetValue<int>("Auth:ResetAttemptsAfterMinutes", 30);
+            if (attempt.LastAttempt < DateTime.UtcNow.AddMinutes(-resetMinutes))
+            {
+                attempt.FailedAttempts = 0;
+            }
+
+            attempt.LastAttempt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return true;
+        }
+
+        private async Task RecordFailedLogin(string email, string reason = null)
+        {
+            var maxAttempts = _configuration.GetValue<int>("Auth:MaxLoginAttempts", 5);
+            var lockoutMinutes = _configuration.GetValue<int>("Auth:LockoutMinutes", 15);
+
+            var attempt = await _context.UserLoginAttempts
+                .FirstOrDefaultAsync(a => a.Email == email);
+
+            if (attempt == null)
+            {
+                attempt = new UserLoginAttempt { Email = email };
+                _context.UserLoginAttempts.Add(attempt);
+            }
+
+            attempt.FailedAttempts++;
+            attempt.LastAttempt = DateTime.UtcNow;
+
+            // Verrouiller le compte si trop de tentatives
+            if (attempt.FailedAttempts >= maxAttempts)
+            {
+                attempt.LockoutEnd = DateTime.UtcNow.AddMinutes(lockoutMinutes);
+                _logger.LogWarning($"Account {email} locked for {lockoutMinutes} minutes");
+            }
+
+            await _context.SaveChangesAsync();
+        }
+
+        private async Task ResetLoginAttempts(string email)
+        {
+            var attempt = await _context.UserLoginAttempts
+                .FirstOrDefaultAsync(a => a.Email == email);
+
+            if (attempt != null)
+            {
+                attempt.FailedAttempts = 0;
+                attempt.LockoutEnd = null;
+                await _context.SaveChangesAsync();
+            }
+        }
+
+        private async Task RecordLoginAudit(ApplicationUser user, bool success, string action, string failureReason = null)
+        {
+            try
+            {
+                var audit = new LoginAudit
+                {
+                    UserId = user.Id,
+                    Username = user.UserName,
+                    Email = user.Email,
+                    LoginTime = DateTime.UtcNow,
+                    IPAddress = GetClientIp(),
+                    UserAgent = GetUserAgent(),
+                    Success = success,
+                    FailureReason = success ? null : failureReason
+                };
+
+                _context.LoginAudits.Add(audit);
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to record login audit");
+            }
+        }
+
+        private string GetClientIp()
+        {
+            try
+            {
+                return _httpContextAccessor?.HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? "Unknown";
+            }
+            catch
+            {
+                return "Unknown";
+            }
+        }
+
+        private string GetUserAgent()
+        {
+            try
+            {
+                return _httpContextAccessor?.HttpContext?.Request?.Headers["User-Agent"].ToString() ?? "Unknown";
+            }
+            catch
+            {
+                return "Unknown";
             }
         }
     }

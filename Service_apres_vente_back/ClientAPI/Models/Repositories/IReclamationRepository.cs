@@ -47,8 +47,15 @@ namespace ClientAPI.Models.Repositories
         // Méthodes pour les jointures
         Reclamation GetReclamationWithClient(int id);
         IList<Reclamation> GetAllReclamationsWithClients();
-        // Ajoute ces méthodes :
+
+        // Nouvelles méthodes ajoutées
         int CountReclamationsByStatutForClient(int clientId, string statut);
         DateTime? GetDerniereReclamationForClient(int clientId);
+
+        // Pour les nouvelles fonctionnalités
+        IList<Reclamation> GetReclamationsByPriorite(string priorite);
+        IList<Reclamation> GetReclamationsByTypeProbleme(string typeProbleme);
+        IList<Reclamation> GetReclamationsAvecPhotos();
+        IList<Reclamation> GetReclamationsAvecPieces();
     }
 }

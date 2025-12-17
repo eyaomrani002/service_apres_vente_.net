@@ -31,7 +31,21 @@ namespace ArticleAPI.Models
         [Required]
         [Range(0, 999999.99)]
         public decimal PrixAchat { get; set; }
+        // Ajouter ces propriétés pour le SAV
+        [Display(Name = "Numéro de série")]
+        [StringLength(100)]
+        public string? NumeroSerie { get; set; }
 
+        [Display(Name = "Date d'installation")]
+        public DateTime? DateInstallation { get; set; }
+
+        [Display(Name = "Lieu d'installation")]
+        [StringLength(200)]
+        public string? LieuInstallation { get; set; }
+
+        [Display(Name = "Type d'installation")]
+        [StringLength(50)]
+        public string? TypeInstallation { get; set; } // "Murale", "Sol", "Encastrée"
         public bool EstEnStock { get; set; } = true;
 
         // Propriété calculée pour savoir si l'article est sous garantie

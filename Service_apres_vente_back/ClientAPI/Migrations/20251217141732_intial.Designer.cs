@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace ClientAPI.Migrations
 {
     [DbContext(typeof(ClientAPIContext))]
-    [Migration("20251202190930_initialcreate")]
-    partial class initialcreate
+    [Migration("20251217141732_intial")]
+    partial class intial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -66,7 +66,7 @@ namespace ClientAPI.Migrations
                         {
                             Id = 1,
                             Adresse = "Tunis, Tunisie",
-                            DateInscription = new DateTime(2025, 12, 2, 20, 9, 29, 352, DateTimeKind.Local).AddTicks(9316),
+                            DateInscription = new DateTime(2025, 12, 17, 15, 17, 31, 805, DateTimeKind.Local).AddTicks(8269),
                             Email = "mohamed@example.com",
                             Nom = "Mohamed Ben Ali",
                             Telephone = "12345678"
@@ -75,7 +75,7 @@ namespace ClientAPI.Migrations
                         {
                             Id = 2,
                             Adresse = "Sousse, Tunisie",
-                            DateInscription = new DateTime(2025, 12, 2, 20, 9, 29, 352, DateTimeKind.Local).AddTicks(9367),
+                            DateInscription = new DateTime(2025, 12, 17, 15, 17, 31, 805, DateTimeKind.Local).AddTicks(8334),
                             Email = "fatma@example.com",
                             Nom = "Fatma Ahmed",
                             Telephone = "87654321"
@@ -109,12 +109,25 @@ namespace ClientAPI.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
+                    b.Property<string>("PhotosUrls")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Priorite")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<string>("Statut")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)")
                         .HasDefaultValue("En attente");
+
+                    b.Property<string>("TypeProbleme")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.HasKey("Id");
 
@@ -134,7 +147,9 @@ namespace ClientAPI.Migrations
                             ClientId = 1,
                             DateCreation = new DateTime(2024, 1, 10, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             Description = "Robinet qui fuit dans la salle de bain",
-                            Statut = "En cours"
+                            Priorite = "Moyenne",
+                            Statut = "En cours",
+                            TypeProbleme = "Général"
                         },
                         new
                         {
@@ -143,8 +158,44 @@ namespace ClientAPI.Migrations
                             ClientId = 2,
                             DateCreation = new DateTime(2024, 1, 15, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             Description = "Radiateur ne chauffe pas correctement",
-                            Statut = "En attente"
+                            Priorite = "Moyenne",
+                            Statut = "En attente",
+                            TypeProbleme = "Général"
                         });
+                });
+
+            modelBuilder.Entity("ClientAPI.Models.ReclamationPiece", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("Fournie")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Quantite")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReclamationId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReclamationId");
+
+                    b.ToTable("ReclamationPiece");
                 });
 
             modelBuilder.Entity("ClientAPI.Models.Reclamation", b =>
@@ -158,9 +209,23 @@ namespace ClientAPI.Migrations
                     b.Navigation("Client");
                 });
 
+            modelBuilder.Entity("ClientAPI.Models.ReclamationPiece", b =>
+                {
+                    b.HasOne("ClientAPI.Models.Reclamation", null)
+                        .WithMany("PiecesNecessaires")
+                        .HasForeignKey("ReclamationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ClientAPI.Models.Client", b =>
                 {
                     b.Navigation("Reclamations");
+                });
+
+            modelBuilder.Entity("ClientAPI.Models.Reclamation", b =>
+                {
+                    b.Navigation("PiecesNecessaires");
                 });
 #pragma warning restore 612, 618
         }

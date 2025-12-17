@@ -1,6 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using InterventionAPI.Data;
 using InterventionAPI.Models;
+using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace InterventionAPI.Models.Repositories
 {
@@ -18,6 +20,231 @@ namespace InterventionAPI.Models.Repositories
             _context = context;
             _httpClient = httpClientFactory.CreateClient();
             _logger = logger;
+        }
+
+        // ========== MÉTHODES DE GARANTIE ET LOGIQUE MÉTIER ==========
+
+        public async Task<Intervention> CreateInterventionAvecGarantie(Intervention intervention)
+        {
+            try
+            {
+                // 1. Récupérer la réclamation pour avoir l'article ID
+                var reclamation = await GetReclamationInfo(intervention.ReclamationId);
+                if (reclamation == null)
+                    throw new Exception($"Réclamation {intervention.ReclamationId} non trouvée");
+
+                // 2. Vérifier si l'article est sous garantie
+                bool estSousGarantie = await VerifierGarantieArticle(reclamation.ArticleId);
+
+                // 3. Appliquer la règle métier
+                intervention.EstGratuite = estSousGarantie;
+
+                if (estSousGarantie)
+                {
+                    // Intervention gratuite si sous garantie
+                    intervention.CoutPieces = 0;
+                    intervention.CoutMainOeuvre = 0;
+                    intervention.Description += " (Intervention gratuite - Article sous garantie)";
+                }
+                else
+                {
+                    // Intervention payante - calculer les coûts si non fournis
+                    if (!intervention.CoutPieces.HasValue)
+                        intervention.CoutPieces = await CalculerCoutPiecesEstime(reclamation.ArticleId);
+
+                    if (!intervention.CoutMainOeuvre.HasValue)
+                        intervention.CoutMainOeuvre = 50.00m; // Coût main d'œuvre par défaut
+                }
+
+                // 4. Définir la date d'intervention si non spécifiée
+                if (intervention.DateIntervention == default)
+                    intervention.DateIntervention = DateTime.Now;
+
+                // 5. Sauvegarder
+                _context.Interventions.Add(intervention);
+                await _context.SaveChangesAsync();
+
+                // 6. Si payante et terminée, créer facture automatiquement
+                if (!estSousGarantie && intervention.Statut == "Terminée")
+                {
+                    await CreerFactureAutomatique(intervention.Id, reclamation);
+                }
+
+                return intervention;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur dans CreateInterventionAvecGarantie");
+                throw;
+            }
+        }
+
+        public async Task<bool> VerifierGarantieArticle(int articleId)
+        {
+            try
+            {
+                var response = await _httpClient.GetAsync($"http://localhost:7076/apigateway/articles/{articleId}/garantie");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    var result = JsonSerializer.Deserialize<bool>(content, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                    return result;
+                }
+
+                _logger.LogWarning($"ArticleAPI non accessible pour article {articleId}. Status: {response.StatusCode}");
+                return false; // Par défaut, considérer comme hors garantie si API inaccessible
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Erreur vérification garantie article {articleId}");
+                return false;
+            }
+        }
+
+        public async Task<ReclamationInfoDTO?> GetReclamationInfo(int reclamationId)
+        {
+            try
+            {
+                var response = await _httpClient.GetAsync($"http://localhost:7076/apigateway/reclamations/{reclamationId}");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    var reclamation = JsonSerializer.Deserialize<ReclamationInfoDTO>(content, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                    return reclamation;
+                }
+
+                _logger.LogWarning($"ClientAPI non accessible pour réclamation {reclamationId}. Status: {response.StatusCode}");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Erreur récupération réclamation {reclamationId}");
+                return null;
+            }
+        }
+
+        private async Task<decimal> CalculerCoutPiecesEstime(int articleId)
+        {
+            try
+            {
+                var response = await _httpClient.GetAsync($"http://localhost:7076/apigateway/articles/{articleId}");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    var article = JsonSerializer.Deserialize<ArticleInfoDTO>(content, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+
+                    // Estimation : 20% du prix d'achat pour les pièces, minimum 10€
+                    return Math.Max(article?.PrixAchat * 0.2m ?? 30.00m, 10.00m);
+                }
+
+                return 30.00m; // Valeur par défaut
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, $"Erreur calcul coût pièces article {articleId}");
+                return 30.00m;
+            }
+        }
+
+        private async Task<Facture?> CreerFactureAutomatique(int interventionId, ReclamationInfoDTO reclamation)
+        {
+            try
+            {
+                var intervention = await _context.Interventions
+                    .Include(i => i.Facture)
+                    .FirstOrDefaultAsync(i => i.Id == interventionId);
+
+                if (intervention == null || intervention.EstGratuite || intervention.Facture != null)
+                    return null;
+
+                // Récupérer infos client
+                var clientInfo = await GetClientInfo(reclamation.ClientId);
+
+                var facture = new Facture
+                {
+                    InterventionId = interventionId,
+                    NumeroFacture = GenererNumeroFacture(),
+                    DateFacture = DateTime.Now,
+                    ClientNom = clientInfo?.Nom ?? "Client non spécifié",
+                    ClientAdresse = clientInfo?.Adresse ?? "Adresse non spécifiée",
+                    ClientEmail = clientInfo?.Email ?? "email@exemple.com",
+                    MontantHT = intervention.CoutTotal ?? 0,
+                    TVA = 0.19m,
+                    Statut = "En attente",
+                    DescriptionServices = $"Intervention du {intervention.DateIntervention:dd/MM/yyyy}\n" +
+                                         $"Description: {intervention.Description}\n" +
+                                         $"Solution: {intervention.SolutionApportee ?? "Non spécifiée"}"
+                };
+
+                _context.Factures.Add(facture);
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation($"Facture {facture.NumeroFacture} créée automatiquement pour l'intervention {interventionId}");
+                return facture;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Erreur création facture automatique intervention {interventionId}");
+                return null;
+            }
+        }
+
+        private async Task<ClientInfoDTO?> GetClientInfo(int clientId)
+        {
+            try
+            {
+                var response = await _httpClient.GetAsync($"http://localhost:7076/apigateway/clients/{clientId}");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    return JsonSerializer.Deserialize<ClientInfoDTO>(content, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                }
+
+                _logger.LogWarning($"ClientAPI non accessible pour client {clientId}");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, $"Erreur récupération client {clientId}");
+                return null;
+            }
+        }
+
+        public async Task<decimal?> CalculerCoutIntervention(int reclamationId, bool articleSousGarantie)
+        {
+            if (articleSousGarantie)
+                return null; // Gratuit si sous garantie
+
+            // Logique de calcul du coût
+            decimal coutBase = 50.00m; // Coût de base pour la main d'œuvre
+            decimal margePieces = 1.2m; // Marge de 20% sur les pièces
+
+            var interventions = GetByReclamationId(reclamationId);
+
+            if (!interventions.Any())
+                return coutBase;
+
+            decimal totalPieces = interventions
+                .Where(i => i.CoutPieces.HasValue)
+                .Sum(i => i.CoutPieces.Value * margePieces);
+
+            return coutBase + totalPieces;
         }
 
         // ========== CRUD INTERVENTIONS ==========
@@ -475,56 +702,16 @@ namespace InterventionAPI.Models.Repositories
             };
         }
 
-        // ========== MÉTHODES MÉTIER ==========
-
-        public async Task<bool> VerifierGarantieArticle(int articleId)
-        {
-            try
-            {
-                // Appel au microservice ArticleAPI
-                var response = await _httpClient.GetAsync($"http://articleapi/api/articles/{articleId}/garantie");
-                if (response.IsSuccessStatusCode)
-                {
-                    var result = await response.Content.ReadFromJsonAsync<bool>();
-                    return result;
-                }
-                return false;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Erreur lors de la vérification de garantie pour l'article {articleId}");
-                return false;
-            }
-        }
-
-        public async Task<decimal?> CalculerCoutIntervention(int reclamationId, bool articleSousGarantie)
-        {
-            if (articleSousGarantie)
-                return null; // Gratuit si sous garantie
-
-            // Logique de calcul du coût
-            decimal coutBase = 50.00m; // Coût de base pour la main d'œuvre
-            decimal margePieces = 1.2m; // Marge de 20% sur les pièces
-
-            var interventions = GetByReclamationId(reclamationId);
-
-            if (!interventions.Any())
-                return coutBase;
-
-            decimal totalPieces = interventions
-                .Where(i => i.CoutPieces.HasValue)
-                .Sum(i => i.CoutPieces.Value * margePieces);
-
-            return coutBase + totalPieces;
-        }
+        // ========== AUTRES MÉTHODES MÉTIER ==========
 
         public string GenererNumeroFacture()
         {
-            var now = DateTime.Now;
+            var maintenant = DateTime.Now;
             var count = _context.Factures
-                .Count(f => f.DateFacture.Year == now.Year && f.DateFacture.Month == now.Month) + 1;
+                .Count(f => f.DateFacture.Year == maintenant.Year &&
+                           f.DateFacture.Month == maintenant.Month) + 1;
 
-            return $"FACT-{now:yyyy}-{now:MM}-{count:D3}";
+            return $"FACT-{maintenant:yyyyMM}-{count:D4}";
         }
 
         public Facture? CreerFacturePourIntervention(int interventionId)
@@ -533,8 +720,7 @@ namespace InterventionAPI.Models.Repositories
             if (intervention == null || intervention.EstGratuite || intervention.Facture != null)
                 return null;
 
-            // Récupérer les infos du client (appel à ClientAPI)
-            // Pour l'instant, on utilise des valeurs par défaut
+            // Utiliser les valeurs existantes ou par défaut
             var facture = new Facture
             {
                 InterventionId = interventionId,
@@ -546,11 +732,41 @@ namespace InterventionAPI.Models.Repositories
                 MontantHT = intervention.CoutTotal ?? 0,
                 TVA = 0.19m,
                 Statut = "En attente",
-                DescriptionServices = $"Intervention: {intervention.Description}\nSolution: {intervention.SolutionApportee}"
+                DescriptionServices = $"Intervention: {intervention.Description}\nSolution: {intervention.SolutionApportee ?? "Non spécifiée"}"
             };
 
             AddFacture(facture);
             return facture;
         }
+
+        // ========== DTOs INTERNES ==========
+    }
+
+    // DTOs pour la communication inter-services
+    public class ReclamationInfoDTO
+    {
+        public int Id { get; set; }
+        public int ClientId { get; set; }
+        public int ArticleId { get; set; }
+        public string Description { get; set; } = string.Empty;
+        public string Statut { get; set; } = string.Empty;
+        public DateTime DateCreation { get; set; }
+    }
+
+    public class ArticleInfoDTO
+    {
+        public int Id { get; set; }
+        public string Nom { get; set; } = string.Empty;
+        public decimal PrixAchat { get; set; }
+        public bool EstSousGarantie { get; set; }
+    }
+
+    public class ClientInfoDTO
+    {
+        public int Id { get; set; }
+        public string Nom { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Adresse { get; set; } = string.Empty;
+        public string Telephone { get; set; } = string.Empty;
     }
 }

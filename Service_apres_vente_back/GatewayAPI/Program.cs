@@ -31,7 +31,7 @@ builder.Services.AddAuthentication(options =>
 
 // Configuration Ocelot
 builder.Configuration.AddJsonFile("Ocelot.json", optional: false, reloadOnChange: true);
-builder.Services.AddOcelot();
+builder.Services.AddOcelot(builder.Configuration);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -42,7 +42,7 @@ var allowedOrigin = "http://localhost:5173";
 
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("LocalDevCors", policy =>
+    options.AddPolicy("AllowFrontend", policy =>
     {
         policy.WithOrigins(allowedOrigin)   // ne PAS utiliser AllowAnyOrigin() si vous AllowCredentials()
               .AllowAnyMethod()
@@ -60,7 +60,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseCors("LocalDevCors");
+// Fix: use the defined CORS policy name
+app.UseCors("AllowFrontend");
 
 // IMPORTANT: Ces 2 lignes DOIVENT être dans cet ordre
 app.UseAuthentication();

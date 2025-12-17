@@ -33,6 +33,21 @@ namespace ClientAPI.Models
         // Navigation property
         public virtual Client? Client { get; set; }
 
+        // NOUVELLES PROPRIÉTÉS AJOUTÉES
+        [Display(Name = "Priorité")]
+        [StringLength(20)]
+        public string Priorite { get; set; } = "Moyenne"; // "Basse", "Moyenne", "Haute", "Urgente"
+
+        [Display(Name = "Type de problème")]
+        [StringLength(50)]
+        public string TypeProbleme { get; set; } = "Général"; // "Fuite", "Chauffage", "Électrique", "Montage"
+
+        [Display(Name = "Photos (URLs)")]
+        public List<string>? PhotosUrls { get; set; }
+
+        [Display(Name = "Pièces nécessaires")]
+        public List<ReclamationPiece>? PiecesNecessaires { get; set; }
+
         // Propriétés calculées
         [Display(Name = "Durée (jours)")]
         public int? DureeJours
@@ -52,5 +67,24 @@ namespace ClientAPI.Models
 
         [Display(Name = "En retard")]
         public bool EnRetard => !EstResolue && (DateTime.Now - DateCreation).TotalDays > 7;
+    }
+
+    public class ReclamationPiece
+    {
+        public int Id { get; set; }
+
+        [Required(ErrorMessage = "La référence est obligatoire")]
+        [StringLength(50, ErrorMessage = "La référence ne peut pas dépasser 50 caractères")]
+        public string Reference { get; set; } = string.Empty;
+
+        [StringLength(200, ErrorMessage = "La description ne peut pas dépasser 200 caractères")]
+        public string Description { get; set; } = string.Empty;
+
+        [Range(1, 100, ErrorMessage = "La quantité doit être entre 1 et 100")]
+        public int Quantite { get; set; } = 1;
+
+        public bool Fournie { get; set; } = false;
+
+        public int ReclamationId { get; set; }
     }
 }

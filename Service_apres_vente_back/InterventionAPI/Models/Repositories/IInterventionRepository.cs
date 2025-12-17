@@ -11,6 +11,9 @@ namespace InterventionAPI.Models.Repositories
         void Add(Intervention intervention);
         Intervention Update(Intervention intervention);
         void Delete(int id);
+        
+        // Création avec logique de garantie
+        Task<Intervention> CreateInterventionAvecGarantie(Intervention intervention);
 
         // CRUD Factures
         Facture? GetFactureById(int id);

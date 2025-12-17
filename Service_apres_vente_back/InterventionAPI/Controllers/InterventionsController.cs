@@ -67,37 +67,46 @@ namespace InterventionAPI.Controllers
                 if (!ModelState.IsValid)
                     return BadRequest(ModelState);
 
-                /*try
-                {
-                    var response = await _httpClient.GetAsync($"http://localhost:5003/api/reclamations/{intervention.ReclamationId}");
-                    if (!response.IsSuccessStatusCode)
-                        return BadRequest($"Réclamation avec ID {intervention.ReclamationId} non trouvée");
-                }
-                catch
-                {
-                    return BadRequest("Impossible de vérifier la réclamation");
-                }
-
-                _repository.Add(intervention);
-                return CreatedAtAction(nameof(GetIntervention), new { id = intervention.Id }, intervention);
-            }*/
+                // Validations croisées strictes
+                // 1) Vérifier que la réclamation existe (ClientAPI)
                 try
                 {
-                    var response = await _httpClient.GetAsync($"http://localhost:5003/api/reclamations/{intervention.ReclamationId}");
-                    if (!response.IsSuccessStatusCode)
+                    var reclResponse = await _httpClient.GetAsync($"https://localhost:7025/api/reclamations/{intervention.ReclamationId}");
+                    if (!reclResponse.IsSuccessStatusCode)
+                        return BadRequest($"Réclamation avec ID {intervention.ReclamationId} n'existe pas");
+
+                    // 2) Vérifier que le client lié existe (ClientAPI)
+                    try
                     {
-                        // Juste logger l'erreur mais continuer
-                        _logger.LogWarning($"Réclamation avec ID {intervention.ReclamationId} non vérifiée (ClientAPI non disponible)");
+                        var json = await reclResponse.Content.ReadAsStringAsync();
+                        // La réponse inclut normalement ClientId
+                        var doc = System.Text.Json.JsonDocument.Parse(json);
+                        if (doc.RootElement.TryGetProperty("clientId", out var clientIdEl))
+                        {
+                            var clientId = clientIdEl.GetInt32();
+                            var clientResp = await _httpClient.GetAsync($"https://localhost:7025/api/clients/{clientId}");
+                            if (!clientResp.IsSuccessStatusCode)
+                                return BadRequest($"Client avec ID {clientId} n'existe pas");
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Impossible d'extraire ClientId de la réponse réclamation {ReclamationId}", intervention.ReclamationId);
+                        }
+                    }
+                    catch (Exception exInner)
+                    {
+                        _logger.LogWarning(exInner, "Erreur lors de la validation du client lié à la réclamation {ReclamationId}", intervention.ReclamationId);
                     }
                 }
                 catch (HttpRequestException ex)
                 {
-                    _logger.LogWarning(ex, $"ClientAPI non accessible. Vérification de la réclamation {intervention.ReclamationId} ignorée.");
-                    // Continuer sans erreur
+                    _logger.LogWarning(ex, "ClientAPI non accessible pour valider la réclamation {ReclamationId}", intervention.ReclamationId);
+                    return StatusCode(503, "Service ClientAPI indisponible pour validation");
                 }
 
-                _repository.Add(intervention);
-                return CreatedAtAction(nameof(GetIntervention), new { id = intervention.Id }, intervention);
+                // Utiliser la logique métier de garantie: gratuite si article sous garantie
+                var created = await _repository.CreateInterventionAvecGarantie(intervention);
+                return CreatedAtAction(nameof(GetIntervention), new { id = created.Id }, created);
             }
             catch (Exception ex)
             {

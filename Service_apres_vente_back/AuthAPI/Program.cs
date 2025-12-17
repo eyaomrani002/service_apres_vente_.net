@@ -1,4 +1,4 @@
-using AuthAPI.Helpers;
+﻿using AuthAPI.Helpers;
 using AuthAPI.Models;
 using AuthAPI.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -50,6 +50,9 @@ builder.Services.Configure<JWT>(builder.Configuration.GetSection("JWT"));
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 
+// Ajouter HttpContextAccessor
+builder.Services.AddHttpContextAccessor();
+
 // Configure Authentication
 builder.Services.AddAuthentication(options =>
 {
@@ -71,19 +74,17 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = builder.Configuration["JWT:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JWT:Key"]))
     };
-
-    // Pour le d�veloppement seulement - en production, laissez � true
-    o.RequireHttpsMetadata = false;
 });
 
-// Configure Swagger
+// Configure Swagger - CORRIGEZ CECI
+builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "SAV Authentication API",
         Version = "v1",
-        Description = "API d'authentification pour le syst�me SAV avec JWT et Refresh Tokens",
+        Description = "API d'authentification pour le système SAV avec JWT et Refresh Tokens",
         Contact = new OpenApiContact
         {
             Name = "SAV Team",
@@ -91,9 +92,12 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 
+    // Configuration de la sécurité JWT dans Swagger
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header using the Bearer scheme. Example: \"Bearer {token}\"",
+        Description = "JWT Authorization header using the Bearer scheme.\r\n\r\n" +
+                      "Enter 'Bearer' [space] and then your token in the text input below.\r\n\r\n" +
+                      "Example: 'Bearer 12345abcdef'",
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.ApiKey,
@@ -111,11 +115,11 @@ builder.Services.AddSwaggerGen(c =>
                     Id = "Bearer"
                 }
             },
-            Array.Empty<string>()
+            new string[] {}
         }
     });
 
-    // Ajouter support pour les cookies (refresh token)
+    // Ajouter support pour les cookies (optionnel)
     c.AddSecurityDefinition("CookieAuth", new OpenApiSecurityScheme
     {
         Type = SecuritySchemeType.ApiKey,
@@ -137,18 +141,28 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "SAV Auth API v1");
-        c.RoutePrefix = string.Empty;
-        c.OAuthClientId("swagger-ui");
-        c.OAuthAppName("Swagger UI");
+        c.RoutePrefix = "swagger"; // ← CHANGEZ ceci de string.Empty à "swagger"
+        c.DocumentTitle = "SAV Auth API Documentation";
+        c.DisplayRequestDuration();
+        c.DefaultModelsExpandDepth(-1);
+        c.DefaultModelExpandDepth(5);
+        c.DisplayOperationId();
+        c.EnableFilter();
+        c.ShowExtensions();
     });
+}
+else
+{
+    // En production, on peut désactiver Swagger
+    // Ou le protéger avec une authentification
 }
 
 app.UseHttpsRedirection();
 
-// Important: CORS doit �tre avant Authentication et Authorization
+// Important: CORS doit être avant Authentication et Authorization
 app.UseCors("AllowAll");
 
-// Initialiser les r�les au d�marrage
+// Initialiser les rôles au démarrage
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -158,14 +172,14 @@ using (var scope = app.Services.CreateScope())
         var context = services.GetRequiredService<ApplicationDbContext>();
         await context.Database.MigrateAsync();
 
-        // Initialiser les r�les
+        // Initialiser les rôles
         await RoleInitializer.InitializeAsync(services);
-        Console.WriteLine("? Roles and database initialized successfully.");
+        Console.WriteLine("✅ Roles and database initialized successfully.");
     }
     catch (Exception ex)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "? An error occurred while initializing the database or roles.");
+        logger.LogError(ex, "❌ An error occurred while initializing the database or roles.");
     }
 }
 

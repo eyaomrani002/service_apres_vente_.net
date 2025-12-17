@@ -16,6 +16,9 @@ builder.Services.AddControllers()
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Outbound HTTP
+builder.Services.AddHttpClient();
+
 // Configure database
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<ClientAPIContext>(options =>

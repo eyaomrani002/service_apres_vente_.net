@@ -33,6 +33,9 @@ namespace ArticleAPI.Migrations
                     b.Property<DateTime>("DateAchat")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("DateInstallation")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Description")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -43,8 +46,16 @@ namespace ArticleAPI.Migrations
                     b.Property<bool>("EstEnStock")
                         .HasColumnType("bit");
 
+                    b.Property<string>("LieuInstallation")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<string>("Nom")
                         .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("NumeroSerie")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
@@ -60,6 +71,10 @@ namespace ArticleAPI.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("TypeInstallation")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.HasKey("Id");
 

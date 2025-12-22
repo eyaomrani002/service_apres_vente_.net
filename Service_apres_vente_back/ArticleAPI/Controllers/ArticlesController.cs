@@ -1,6 +1,10 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using ArticleAPI.Models;
 using ArticleAPI.Models.Repositories;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace ArticleAPI.Controllers
 {
@@ -10,11 +14,13 @@ namespace ArticleAPI.Controllers
     {
         private readonly IArticleRepository _repository;
         private readonly ILogger<ArticlesController> _logger;
+        private readonly IHttpClientFactory _httpClientFactory;
 
-        public ArticlesController(IArticleRepository repository, ILogger<ArticlesController> logger)
+        public ArticlesController(IArticleRepository repository, ILogger<ArticlesController> logger, IHttpClientFactory httpClientFactory)
         {
             _repository = repository;
             _logger = logger;
+            _httpClientFactory = httpClientFactory;
         }
 
         // GET: api/articles
@@ -110,7 +116,7 @@ namespace ArticleAPI.Controllers
 
         // POST: api/articles
         [HttpPost]
-        public ActionResult<Article> CreateArticle(Article article)
+        public async Task<ActionResult<Article>> CreateArticle(Article article)
         {
             try
             {
@@ -122,6 +128,35 @@ namespace ArticleAPI.Controllers
                     return BadRequest("Cette référence existe déjà");
 
                 _repository.Add(article);
+
+                // Envoi d'une notification aux clients via NotificationAPI (passerelle)
+                try
+                {
+                    var client = _httpClientFactory.CreateClient();
+                    var notif = new
+                    {
+                        Type = "info",
+                        Recipient = "clients",
+                        Subject = $"Nouvel article: {article.Nom}",
+                        Message = $"Un nouvel article a été ajouté : {article.Nom} (Réf: {article.Reference})"
+                    };
+                    var json = JsonSerializer.Serialize(notif);
+                    var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                    // Appel via API Gateway
+                    var notifUrl = "http://localhost:7076/apigateway/notifications";
+                    var resp = await client.PostAsync(notifUrl, content);
+                    if (!resp.IsSuccessStatusCode)
+                    {
+                        _logger.LogWarning($"Notification API responded {(int)resp.StatusCode} when posting notification for article {article.Id}");
+                    }
+                }
+                catch (Exception exNotify)
+                {
+                    _logger.LogWarning(exNotify, "Échec envoi notification après création d'article");
+                    // Ne pas échouer la création d'article pour un échec de notification
+                }
+
                 return CreatedAtAction(nameof(GetArticle), new { id = article.Id }, article);
             }
             catch (Exception ex)

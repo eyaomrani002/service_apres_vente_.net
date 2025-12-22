@@ -6,7 +6,7 @@ import type { OverridableComponent } from '@mui/material/OverridableComponent';
 interface StatsCardProps {
   title: string;
   value: string | number;
-  icon: OverridableComponent<SvgIconTypeMap<{}, "svg">>;
+  icon?: OverridableComponent<SvgIconTypeMap<{}, "svg">>;
   color?: 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info';
   subtitle?: string;
   trend?: {
@@ -64,20 +64,22 @@ const StatsCard: React.FC<StatsCardProps> = ({
               </Box>
             )}
           </Box>
-          
-          <Box
-            sx={{
-              backgroundColor: `${colors[color]}15`,
-              borderRadius: '50%',
-              width: 56,
-              height: 56,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Icon sx={{ fontSize: 28, color: colors[color] }} />
-          </Box>
+
+          {Icon && (
+            <Box
+              sx={{
+                backgroundColor: `${colors[color]}15`,
+                borderRadius: '50%',
+                width: 56,
+                height: 56,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Icon sx={{ fontSize: 28, color: colors[color] }} />
+            </Box>
+          )}
         </Box>
       </CardContent>
     </Card>

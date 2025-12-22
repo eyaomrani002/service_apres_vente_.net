@@ -2,37 +2,41 @@ import { createTheme } from '@mui/material/styles';
 
 export const theme = createTheme({
   palette: {
-    mode: 'dark',
+    mode: 'light',
     primary: {
-      main: '#90caf9',
-      light: '#a6d4fa',
-      dark: '#648dae',
-      contrastText: '#0b1b2b',
+      main: '#2563eb',
+      light: '#60a5fa',
+      dark: '#1e40af',  
+      contrastText: '#ffffff',
     },
     secondary: {
-      main: '#ce93d8',
-      light: '#e1bee7',
-      dark: '#9c64a6',
+      main: '#10b981',
+      light: '#34d399',
+      dark: '#047857',
+      contrastText: '#ffffff',
     },
     success: {
-      main: '#66bb6a',
-      light: '#81c784',
+      main: '#16a34a',
+      light: '#22c55e',
+      dark: '#166534',
     },
     warning: {
-      main: '#ffa726',
-      light: '#ffb74d',
+      main: '#f59e0b',
+      light: '#fbbf24',
+      dark: '#b45309',
     },
     error: {
-      main: '#ef5350',
-      light: '#e57373',
+      main: '#ef4444',
+      light: '#f87171',
+      dark: '#b91c1c',
     },
     background: {
-      default: '#0b1220',
-      paper: '#0f1724',
+      default: '#f8fafc',
+      paper: '#ffffff',
     },
     text: {
-      primary: '#e6eef8',
-      secondary: '#b9c6d8',
+      primary: '#0f172a',
+      secondary: '#334155',
     },
   },
   typography: {
@@ -98,8 +102,7 @@ export const theme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: 16,
-          // subtle elevated surface per Material 3
-          boxShadow: '0 6px 18px rgba(2,6,23,0.6)',
+          boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
         },
       },
     },

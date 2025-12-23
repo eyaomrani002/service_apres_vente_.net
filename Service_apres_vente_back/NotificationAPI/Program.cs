@@ -1,5 +1,8 @@
+using System;
 using Microsoft.EntityFrameworkCore;
 using NotificationAPI.Data;
+using NotificationAPI.Models;
+using NotificationAPI.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +17,11 @@ builder.Services.AddDbContext<NotificationAPIContext>(options => options.UseSqlS
 
 // Repositories
 builder.Services.AddScoped<NotificationAPI.Models.Repositories.INotificationRepository, NotificationAPI.Models.Repositories.NotificationRepository>();
+
+// Notification services
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddHttpClient<ISmsSender, TwilioSmsSender>(client => client.BaseAddress = new Uri("https://api.twilio.com"));
+builder.Services.Configure<SmsSettings>(builder.Configuration.GetSection("SmsSettings"));
 
 // CORS
 builder.Services.AddCors(options =>

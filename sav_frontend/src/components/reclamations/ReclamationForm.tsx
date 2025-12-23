@@ -1,8 +1,105 @@
+// ReclamationForm.tsx - Formulaire moderne pour créer/modifier une réclamation
 import React, { useEffect, useState } from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Grid, MenuItem } from '@mui/material';
+import { 
+  Dialog, DialogTitle, DialogContent, DialogActions, 
+  TextField, Button, Grid, MenuItem, Box, Typography,
+  IconButton, Divider, InputAdornment
+} from '@mui/material';
+import { styled, keyframes } from '@mui/material/styles';
+import { 
+  Assignment, Close, Save, Cancel, Person, 
+  Description, PriorityHigh, TrendingUp
+} from '@mui/icons-material';
 import { Reclamation } from '../../types/reclamation';
 import { Client } from '../../types/client';
 import { clientService } from '../../services/clientService';
+
+// Animations
+const fadeIn = keyframes`
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+`;
+
+// Styled Components
+const StyledDialog = styled(Dialog)(({ theme }) => ({
+  '& .MuiDialog-paper': {
+    borderRadius: '24px',
+    padding: '8px',
+    animation: `${fadeIn} 0.3s ease`,
+    maxWidth: '700px',
+    width: '100%',
+  },
+}));
+
+const StyledDialogTitle = styled(DialogTitle)(({ theme }) => ({
+  background: 'linear-gradient(135deg, #2196F3 0%, #00BCD4 100%)',
+  color: '#fff',
+  padding: '24px 32px',
+  borderRadius: '16px 16px 0 0',
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  fontWeight: 700,
+  fontSize: '24px',
+}));
+
+const StyledTextField = styled(TextField)(({ theme }) => ({
+  '& .MuiOutlinedInput-root': {
+    borderRadius: '12px',
+    transition: 'all 0.3s ease',
+    '&:hover': {
+      '& .MuiOutlinedInput-notchedOutline': {
+        borderColor: '#2196F3',
+      },
+    },
+    '&.Mui-focused': {
+      '& .MuiOutlinedInput-notchedOutline': {
+        borderColor: '#2196F3',
+        borderWidth: '2px',
+      },
+      transform: 'scale(1.01)',
+      boxShadow: '0 4px 20px rgba(33, 150, 243, 0.15)',
+    },
+  },
+  '& .MuiInputLabel-root': {
+    fontWeight: 600,
+    '&.Mui-focused': {
+      color: '#2196F3',
+    },
+  },
+}));
+
+const SaveButton = styled(Button)(({ theme }) => ({
+  background: 'linear-gradient(135deg, #2196F3 0%, #00BCD4 100%)',
+  color: '#fff',
+  fontWeight: 700,
+  padding: '12px 32px',
+  borderRadius: '12px',
+  textTransform: 'none',
+  fontSize: '16px',
+  transition: 'all 0.3s ease',
+  '&:hover': {
+    transform: 'translateY(-2px)',
+    boxShadow: '0 8px 24px rgba(33, 150, 243, 0.4)',
+    background: 'linear-gradient(135deg, #1976D2 0%, #0097A7 100%)',
+  },
+}));
+
+const CancelButton = styled(Button)(({ theme }) => ({
+  color: '#666',
+  fontWeight: 600,
+  padding: '12px 32px',
+  borderRadius: '12px',
+  textTransform: 'none',
+  fontSize: '16px',
+  border: '2px solid #e0e0e0',
+  transition: 'all 0.3s ease',
+  '&:hover': {
+    borderColor: '#2196F3',
+    backgroundColor: 'rgba(33, 150, 243, 0.04)',
+    transform: 'translateY(-2px)',
+  },
+}));
 
 interface Props {
   open: boolean;
@@ -14,9 +111,20 @@ interface Props {
 const ReclamationForm: React.FC<Props> = ({ open, reclamation, onClose, onSave }) => {
   const [form, setForm] = useState<Partial<Reclamation>>({});
   const [clients, setClients] = useState<Client[]>([]);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [focusedField, setFocusedField] = useState<string | null>(null);
 
   useEffect(() => {
-    setForm(reclamation ? { ...reclamation } : { clientId: undefined, sujet: '', description: '', priorite: 'moyenne', statut: 'nouvelle' });
+    if (open) {
+      setForm(reclamation ? { ...reclamation } : { 
+        clientId: undefined, 
+        sujet: '', 
+        description: '', 
+        priorite: 'moyenne', 
+        statut: 'nouvelle' 
+      });
+      setErrors({});
+    }
   }, [reclamation, open]);
 
   useEffect(() => {
@@ -32,51 +140,236 @@ const ReclamationForm: React.FC<Props> = ({ open, reclamation, onClose, onSave }
     return () => { ignore = true; };
   }, [open]);
 
-  const handleChange = (k: keyof Reclamation, v: any) => setForm(s => ({ ...s, [k]: v }));
+  const handleChange = (k: keyof Reclamation, v: any) => {
+    setForm(s => ({ ...s, [k]: v }));
+    if (errors[k]) {
+      setErrors(prev => ({ ...prev, [k]: '' }));
+    }
+  };
+
+  const validate = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    
+    if (!form.clientId) {
+      newErrors.clientId = 'Le client est requis';
+    }
+    
+    if (!form.sujet || form.sujet.trim() === '') {
+      newErrors.sujet = 'Le sujet est requis';
+    }
+    
+    if (!form.description || form.description.trim() === '') {
+      newErrors.description = 'La description est requise';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = () => {
+    if (validate()) {
+      onSave(form);
+    }
+  };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>{reclamation ? 'Modifier réclamation' : 'Nouvelle réclamation'}</DialogTitle>
-      <DialogContent>
-        <Grid container spacing={2} sx={{ mt: 0.5 }}>
+    <StyledDialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <StyledDialogTitle>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Assignment sx={{ fontSize: 32 }} />
+          <span>{reclamation ? 'Modifier la réclamation' : 'Nouvelle réclamation'}</span>
+        </Box>
+        <IconButton 
+          onClick={onClose}
+          sx={{ 
+            color: '#fff',
+            '&:hover': { 
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              transform: 'rotate(90deg)',
+            },
+            transition: 'all 0.3s ease',
+          }}
+        >
+          <Close />
+        </IconButton>
+      </StyledDialogTitle>
+
+      <DialogContent sx={{ p: 4 }}>
+        <Typography 
+          variant="body2" 
+          sx={{ 
+            mb: 3, 
+            color: 'text.secondary',
+            fontSize: '14px',
+          }}
+        >
+          {reclamation 
+            ? 'Modifiez les informations de la réclamation ci-dessous'
+            : 'Remplissez les informations de la nouvelle réclamation'
+          }
+        </Typography>
+
+        <Grid container spacing={3}>
           <Grid item xs={12} sm={6}>
-            <TextField
+            <StyledTextField
               select
+              fullWidth
               label="Client"
               value={form.clientId ?? ''}
-              fullWidth
               onChange={e => handleChange('clientId', Number(e.target.value))}
-              SelectProps={{ native: false }}
+              onFocus={() => setFocusedField('clientId')}
+              onBlur={() => setFocusedField(null)}
+              error={!!errors.clientId}
+              helperText={errors.clientId}
+              required
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Person sx={{ 
+                      color: focusedField === 'clientId' ? '#2196F3' : '#9e9e9e',
+                      transition: 'color 0.3s',
+                    }} />
+                  </InputAdornment>
+                ),
+              }}
             >
               <MenuItem value="" disabled>Sélectionner un client</MenuItem>
               {clients.map(c => (
-                <MenuItem key={c.id} value={c.id}>{c.nom}{c.email ? ` — ${c.email}` : ''}</MenuItem>
+                <MenuItem key={c.id} value={c.id}>
+                  {c.nom}{c.email ? ` — ${c.email}` : ''}
+                </MenuItem>
               ))}
-            </TextField>
+            </StyledTextField>
           </Grid>
-          <Grid item xs={12} sm={6}><TextField label="Sujet" value={form.sujet || ''} fullWidth onChange={e => handleChange('sujet', e.target.value)} /></Grid>
-          <Grid item xs={12}><TextField label="Description" value={form.description || ''} fullWidth multiline rows={3} onChange={e => handleChange('description', e.target.value)} /></Grid>
+
           <Grid item xs={12} sm={6}>
-            <TextField select label="Priorité" value={form.priorite || 'moyenne'} fullWidth onChange={e => handleChange('priorite', e.target.value)}>
-              <MenuItem value="faible">Faible</MenuItem>
-              <MenuItem value="moyenne">Moyenne</MenuItem>
-              <MenuItem value="haute">Haute</MenuItem>
-            </TextField>
+            <StyledTextField
+              fullWidth
+              label="Sujet"
+              value={form.sujet || ''}
+              onChange={e => handleChange('sujet', e.target.value)}
+              onFocus={() => setFocusedField('sujet')}
+              onBlur={() => setFocusedField(null)}
+              error={!!errors.sujet}
+              helperText={errors.sujet}
+              required
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Description sx={{ 
+                      color: focusedField === 'sujet' ? '#00BCD4' : '#9e9e9e',
+                      transition: 'color 0.3s',
+                    }} />
+                  </InputAdornment>
+                ),
+              }}
+            />
           </Grid>
+
+          <Grid item xs={12}>
+            <StyledTextField
+              fullWidth
+              label="Description détaillée"
+              value={form.description || ''}
+              onChange={e => handleChange('description', e.target.value)}
+              onFocus={() => setFocusedField('description')}
+              onBlur={() => setFocusedField(null)}
+              error={!!errors.description}
+              helperText={errors.description || 'Décrivez le problème en détail'}
+              required
+              multiline
+              rows={4}
+            />
+          </Grid>
+
           <Grid item xs={12} sm={6}>
-            <TextField select label="Statut" value={form.statut || 'nouvelle'} fullWidth onChange={e => handleChange('statut', e.target.value)}>
-              <MenuItem value="nouvelle">Nouvelle</MenuItem>
-              <MenuItem value="en_cours">En cours</MenuItem>
-              <MenuItem value="resolue">Résolue</MenuItem>
-            </TextField>
+            <StyledTextField
+              select
+              fullWidth
+              label="Priorité"
+              value={form.priorite || 'moyenne'}
+              onChange={e => handleChange('priorite', e.target.value)}
+              onFocus={() => setFocusedField('priorite')}
+              onBlur={() => setFocusedField(null)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <PriorityHigh sx={{ 
+                      color: focusedField === 'priorite' ? '#FF9800' : '#9e9e9e',
+                      transition: 'color 0.3s',
+                    }} />
+                  </InputAdornment>
+                ),
+              }}
+            >
+              <MenuItem value="faible">🟢 Faible</MenuItem>
+              <MenuItem value="moyenne">🟡 Moyenne</MenuItem>
+              <MenuItem value="haute">🟠 Haute</MenuItem>
+              <MenuItem value="urgente">🔴 Urgente</MenuItem>
+            </StyledTextField>
+          </Grid>
+
+          <Grid item xs={12} sm={6}>
+            <StyledTextField
+              select
+              fullWidth
+              label="Statut"
+              value={form.statut || 'nouvelle'}
+              onChange={e => handleChange('statut', e.target.value)}
+              onFocus={() => setFocusedField('statut')}
+              onBlur={() => setFocusedField(null)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <TrendingUp sx={{ 
+                      color: focusedField === 'statut' ? '#2196F3' : '#9e9e9e',
+                      transition: 'color 0.3s',
+                    }} />
+                  </InputAdornment>
+                ),
+              }}
+            >
+              <MenuItem value="nouvelle">📋 Nouvelle</MenuItem>
+              <MenuItem value="en_cours">⚙️ En cours</MenuItem>
+              <MenuItem value="resolue">✅ Résolue</MenuItem>
+              <MenuItem value="en attente">⏳ En attente</MenuItem>
+            </StyledTextField>
+          </Grid>
+
+          <Grid item xs={12}>
+            <Box 
+              sx={{ 
+                p: 2, 
+                borderRadius: '12px', 
+                backgroundColor: 'rgba(33, 150, 243, 0.05)',
+                border: '1px solid rgba(33, 150, 243, 0.1)',
+              }}
+            >
+              <Typography variant="body2" color="text.secondary">
+                💡 <strong>Astuce:</strong> Une description détaillée aide nos techniciens à résoudre le problème plus rapidement.
+              </Typography>
+            </Box>
           </Grid>
         </Grid>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Annuler</Button>
-        <Button variant="contained" onClick={() => onSave(form)}>Enregistrer</Button>
+
+      <Divider />
+
+      <DialogActions sx={{ p: 3, gap: 2 }}>
+        <CancelButton 
+          onClick={onClose}
+          startIcon={<Cancel />}
+        >
+          Annuler
+        </CancelButton>
+        <SaveButton 
+          onClick={handleSubmit}
+          startIcon={<Save />}
+        >
+          {reclamation ? 'Mettre à jour' : 'Créer'}
+        </SaveButton>
       </DialogActions>
-    </Dialog>
+    </StyledDialog>
   );
 };
 

@@ -22,31 +22,63 @@ function getAuthHeaders(): Record<string, string> {
 
 export const reclamationService = {
   getAll: async (): Promise<Reclamation[]> => {
-    const res = await fetch(`${BASE}`, { headers: getAuthHeaders() });
+    const res = await fetch(`${BASE}`, { 
+      headers: getAuthHeaders(),
+      credentials: 'include'
+    });
     return handleResponse(res);
   },
+  
   getById: async (id: number): Promise<Reclamation> => {
-    const res = await fetch(`${BASE}/${id}`, { headers: getAuthHeaders() });
+    const res = await fetch(`${BASE}/${id}`, { 
+      headers: getAuthHeaders(),
+      credentials: 'include'
+    });
     return handleResponse(res);
   },
+  
   getByClient: async (clientId: number): Promise<Reclamation[]> => {
-    const res = await fetch(`${BASE}/client/${clientId}`, { headers: getAuthHeaders() });
+    const res = await fetch(`${BASE}/client/${clientId}`, { 
+      headers: getAuthHeaders(),
+      credentials: 'include'
+    });
     return handleResponse(res);
   },
+  
   create: async (payload: Partial<Reclamation>): Promise<Reclamation> => {
-    const res = await fetch(`${BASE}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(payload) });
+    const res = await fetch(`${BASE}`, { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, 
+      credentials: 'include',
+      body: JSON.stringify(payload) 
+    });
     return handleResponse(res);
   },
+  
   update: async (id: number, payload: Partial<Reclamation>): Promise<Reclamation> => {
-    const res = await fetch(`${BASE}/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(payload) });
+    const res = await fetch(`${BASE}/${id}`, { 
+      method: 'PUT', 
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, 
+      credentials: 'include',
+      body: JSON.stringify(payload) 
+    });
     return handleResponse(res);
   },
+  
   delete: async (id: number): Promise<void> => {
-    const res = await fetch(`${BASE}/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+    const res = await fetch(`${BASE}/${id}`, { 
+      method: 'DELETE', 
+      headers: getAuthHeaders(),
+      credentials: 'include'
+    });
     return handleResponse(res);
   },
+  
   getStats: async (): Promise<ReclamationStats> => {
-    const res = await fetch(`${BASE}/stats`, { headers: getAuthHeaders() });
+    const res = await fetch(`${BASE}/stats`, { 
+      headers: getAuthHeaders(),
+      credentials: 'include'
+    });
     return handleResponse(res);
   }
 };

@@ -208,9 +208,6 @@
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
       },
-      "RouteClaimsRequirement": {
-        "Role": "Admin"
-      }
     },
     {
       "DownstreamPathTemplate": "/api/auth/user/{userId}",
@@ -227,9 +224,6 @@
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
       },
-      "RouteClaimsRequirement": {
-        "Role": "Admin"
-      }
     },
     {
       "DownstreamPathTemplate": "/api/auth/toggle-user/{userId}",
@@ -246,9 +240,6 @@
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
       },
-      "RouteClaimsRequirement": {
-        "Role": "Admin"
-      }
     },
     {
       "DownstreamPathTemplate": "/api/auth/addrole",
@@ -265,9 +256,6 @@
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
       },
-      "RouteClaimsRequirement": {
-        "Role": "Admin"
-      }
     },
     {
       "DownstreamPathTemplate": "/api/auth/createrole",
@@ -284,9 +272,6 @@
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
       },
-      "RouteClaimsRequirement": {
-        "Role": "Admin"
-      }
     },
 
     // ========== ARTICLES ==========

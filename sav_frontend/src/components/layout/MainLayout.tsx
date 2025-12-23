@@ -25,13 +25,21 @@ import {
   People,
   Assignment,
   Build,
+  Assessment,
   Settings,
   Notifications,
+  CalendarMonth,
+  Group,
   Logout,
   Person,
   ChevronLeft,
   ChevronRight,
+  DarkMode,
+  LightMode,
+  BlurOn,
 } from '@mui/icons-material';
+import { useTheme } from '../../contexts/ThemeContext';
+import NotificationsMenu from '../notifications/NotificationsMenu';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 
 const drawerWidth = 240;
@@ -40,8 +48,11 @@ const menuItems = [
   { text: 'Tableau de bord', icon: <Dashboard />, path: '/dashboard' },
   { text: 'Articles', icon: <Inventory />, path: '/articles' },
   { text: 'Clients', icon: <People />, path: '/clients' },
+  { text: 'Utilisateurs', icon: <Group />, path: '/users' },
   { text: 'Réclamations', icon: <Assignment />, path: '/reclamations' },
   { text: 'Interventions', icon: <Build />, path: '/interventions' },
+  { text: 'Calendrier', icon: <CalendarMonth />, path: '/calendar' },
+  { text: 'Rapports', icon: <Assessment />, path: '/reports' },
   { text: 'Paramètres', icon: <Settings />, path: '/settings' },
 ];
 
@@ -52,6 +63,7 @@ const MainLayout: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const { dark, shadow, toggleDark, toggleShadow } = useTheme();
 
   useEffect(() => {
     try {
@@ -96,11 +108,7 @@ const MainLayout: React.FC = () => {
     handleMenuClose();
   };
 
-  const notifications = [
-    { id: 1, text: 'Nouvelle réclamation #1234', time: 'Il y a 5 min' },
-    { id: 2, text: 'Intervention #5678 terminée', time: 'Il y a 1 heure' },
-    { id: 3, text: 'Article hors stock: SAN-123', time: 'Il y a 2 heures' },
-  ];
+ 
 
   return (
     <Box sx={{ display: 'flex' }}>
@@ -109,9 +117,9 @@ const MainLayout: React.FC = () => {
         position="fixed"
         sx={{
           zIndex: (theme) => theme.zIndex.drawer + 1,
-          backgroundColor: 'white',
-          color: 'text.primary',
-          boxShadow: 1,
+          backgroundColor: 'var(--panel)',
+          color: 'var(--text)',
+          boxShadow: 'var(--surface-shadow)',
         }}
       >
         <Toolbar>
@@ -137,35 +145,27 @@ const MainLayout: React.FC = () => {
               onClick={handleNotificationsOpen}
               sx={{ mr: 1 }}
             >
-              <Badge badgeContent={3} color="error">
+                <Badge badgeContent={0} color="error">
                 <Notifications />
               </Badge>
             </IconButton>
           </Tooltip>
+            <NotificationsMenu anchorEl={notificationsAnchorEl} open={Boolean(notificationsAnchorEl)} onClose={handleNotificationsClose} />
+
+          {/* Theme toggles */}
+          <Tooltip title={dark ? 'Passer en clair' : 'Passer en sombre'}>
+            <IconButton size="large" color="inherit" onClick={toggleDark} sx={{ mr: 1 }}>
+              {dark ? <LightMode /> : <DarkMode />}
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title={shadow ? 'Désactiver ombre' : 'Activer ombre'}>
+            <IconButton size="large" color={shadow ? 'primary' : 'inherit'} onClick={toggleShadow} sx={{ mr: 1 }}>
+              <BlurOn />
+            </IconButton>
+          </Tooltip>
           
-          <Menu
-            anchorEl={notificationsAnchorEl}
-            open={Boolean(notificationsAnchorEl)}
-            onClose={handleNotificationsClose}
-            PaperProps={{
-              sx: { width: 320, maxHeight: 400 },
-            }}
-          >
-            <Typography sx={{ p: 2, fontWeight: 'bold' }}>
-              Notifications
-            </Typography>
-            <Divider />
-            {notifications.map((notification) => (
-              <MenuItem key={notification.id} onClick={handleNotificationsClose}>
-                <Box sx={{ width: '100%' }}>
-                  <Typography variant="body2">{notification.text}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {notification.time}
-                  </Typography>
-                </Box>
-              </MenuItem>
-            ))}
-          </Menu>
+          
           
           {/* Profile Menu */}
           <Tooltip title="Paramètres du compte">
@@ -223,6 +223,9 @@ const MainLayout: React.FC = () => {
             boxSizing: 'border-box',
             transition: 'width 0.3s',
             overflowX: 'hidden',
+            backgroundColor: 'var(--panel)',
+            color: 'var(--text)',
+            boxShadow: 'var(--surface-shadow)',
           },
         }}
       >

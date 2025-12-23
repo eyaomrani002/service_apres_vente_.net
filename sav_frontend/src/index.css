@@ -7,14 +7,41 @@
   line-height: 1.5;
   font-weight: 400;
 
+  /* Color tokens */
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --text: #213547;
+  --muted: #6b7280;
+  --primary: #2563eb; /* default blue */
+  --primary-600: #1e40af;
+  --surface-shadow: 0 6px 18px rgba(16,24,40,0.08);
+  --glass: rgba(255,255,255,0.6);
+
   color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  color: var(--text);
+  background-color: var(--bg);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Dark theme overrides */
+.theme-dark {
+  --bg: #0b1220;
+  --panel: #0f1724;
+  --text: rgba(255,255,255,0.92);
+  --muted: #94a3b8;
+  --primary: #7c3aed; /* violet accent in dark */
+  --primary-600: #6d28d9;
+  --surface-shadow: 0 10px 30px rgba(2,6,23,0.6);
+  --glass: rgba(255,255,255,0.04);
+}
+
+/* Optional shadow (ombre) toggle */
+.with-shadow {
+  --surface-shadow: 0 12px 40px rgba(2,6,23,0.12);
 }
 
 a {
@@ -32,6 +59,9 @@ body {
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
+  background: linear-gradient(180deg, rgba(0,0,0,0.02), transparent 40%), var(--bg);
+  color: var(--text);
+  transition: background-color 300ms ease, color 300ms ease;
 }
 
 h1 {
@@ -46,12 +76,13 @@ button {
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
+  background-color: var(--panel);
   cursor: pointer;
   transition: border-color 0.25s;
 }
 button:hover {
-  border-color: #646cff;
+  border-color: color-mix(in srgb, var(--primary) 60%, transparent);
+  transform: translateY(-2px);
 }
 button:focus,
 button:focus-visible {
@@ -60,13 +91,32 @@ button:focus-visible {
 
 @media (prefers-color-scheme: light) {
   :root {
-    color: #213547;
-    background-color: #ffffff;
+    /* keep defaults */
   }
   a:hover {
     color: #747bff;
   }
   button {
-    background-color: #f9f9f9;
+    background-color: var(--panel);
   }
+}
+
+/* Small utility animations */
+.fade-in {
+  animation: fadeIn 360ms ease both;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Subtle pulsing for primary CTAs */
+.pulse {
+  animation: pulse 3s infinite;
+}
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(124,58,237,0.08); }
+  50% { box-shadow: 0 0 0 8px rgba(124,58,237,0); }
+  100% { box-shadow: 0 0 0 0 rgba(124,58,237,0); }
 }

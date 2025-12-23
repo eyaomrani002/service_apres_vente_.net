@@ -21,12 +21,15 @@ import RegisterPage from './pages/auth/RegisterPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import ProfilePage from './pages/dashboard/ProfilePage';
+import UsersPage from './pages/dashboard/UsersPage';
 
 // Mock pages pour la démo
 import ArticlesPage from './pages/dashboard/ArticlesPage';
 import ClientsPage from './pages/dashboard/ClientsPage';
 import ReclamationsPage from './pages/dashboard/ReclamationsPage';
 import InterventionsPage from './pages/dashboard/InterventionsPage';
+import CalendarPage from './pages/dashboard/CalendarPage';
+import ReportingPage from './pages/dashboard/ReportingPage';
 
 function AppContent() {
   const { isAuthenticated, loading } = useContext(AuthContext);
@@ -51,8 +54,11 @@ function AppContent() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/articles" element={<ArticlesPage />} />
           <Route path="/clients" element={<ClientsPage />} />
+          <Route path="/users" element={<UsersPage />} />
           <Route path="/reclamations" element={<ReclamationsPage />} />
           <Route path="/interventions" element={<InterventionsPage />} />
+          <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/reports" element={<ReportingPage />} />
           <Route path="/profile" element={<ProfilePage />} />
         </Route>
 

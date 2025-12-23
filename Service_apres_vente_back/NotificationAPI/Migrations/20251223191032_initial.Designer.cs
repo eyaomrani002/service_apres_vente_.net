@@ -12,7 +12,7 @@ using NotificationAPI.Data;
 namespace NotificationAPI.Migrations
 {
     [DbContext(typeof(NotificationAPIContext))]
-    [Migration("20251217171424_initial")]
+    [Migration("20251223191032_initial")]
     partial class initial
     {
         /// <inheritdoc />

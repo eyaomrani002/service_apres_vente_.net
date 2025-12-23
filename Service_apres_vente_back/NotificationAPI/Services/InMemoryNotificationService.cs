@@ -41,5 +41,30 @@ namespace NotificationAPI.Services
             _store.TryGetValue(id, out var notif);
             return Task.FromResult(notif);
         }
+
+        public Task<Notification> SendAsync(SendNotificationRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<IReadOnlyList<Notification>> GetRecentAsync(int take = 50, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<Notification?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<byte[]> ExportAsync(DateTime? since = null, string? type = null, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<NotificationMetrics> GetMetricsAsync(CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

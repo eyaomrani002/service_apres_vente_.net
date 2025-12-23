@@ -5,6 +5,9 @@ type User = {
   id?: number;
   email?: string;
   name?: string;
+  firstName?: string;
+  lastName?: string;
+  roles?: string[];
   [key: string]: any;
 };
 
@@ -38,7 +41,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUser(null);
       }
     } else if (token) {
-      // Optionally fetch profile from backend. For now, keep null until login flow sets user.
       setUser(null);
     }
     setLoading(false);
@@ -67,86 +69,109 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
     try {
       const base = import.meta.env.VITE_API_BASE_URL || 'https://localhost:7076/apigateway';
-      const res = await fetch(`${base}/Auth/login`, {
+      const res = await fetch(`${base}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ email, password }),
       });
+      
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
         setLoading(false);
         return { ok: false, message: errBody.message || `Erreur ${res.status}` };
       }
+      
       const data = await res.json();
       const token = data?.token || data?.Token || data?.accessToken || data?.AccessToken;
+      
       if (!token) {
         setLoading(false);
         return { ok: false, message: 'Aucun token reçu du serveur' };
       }
+      
       localStorage.setItem('accessToken', token);
 
-      // If server returned user object, use it. Otherwise try to fetch profile.
-      let resolvedUser = data.user || null;
+      // D'abord essayer de récupérer les données utilisateur depuis la réponse
+      let resolvedUser: User | null = null;
+      
+      // Si le serveur retourne des infos utilisateur dans la réponse
+      if (data.email || data.userId || data.username) {
+        resolvedUser = {
+          id: data.userId || data.id,
+          email: data.email,
+          name: data.username,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          roles: data.roles || [],
+          ...data
+        };
+      }
+      
+      // Si pas d'infos utilisateur dans la réponse, essayer de décoder le JWT
       if (!resolvedUser) {
-        try {
-          const profileRes = await fetch(`${base}/Auth/profile`, {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            credentials: 'include',
-          });
-          if (profileRes.ok) {
-            const profileData = await profileRes.json().catch(() => null);
-            if (profileData) resolvedUser = profileData;
-          }
-        } catch (err) {
-          // ignore profile fetch errors; user may still be authenticated by token
-        }
-
-        // If profile endpoint is missing (404) or not returning user, fall back to decoding the JWT.
-        if (!resolvedUser) {
-          const payload = decodeJwt(token);
-          if (payload) {
-            const nameParts = [
-              payload.firstName || payload.given_name || payload.firstname || payload.first_name,
-              payload.lastName || payload.family_name || payload.lastname || payload.last_name,
-            ].filter(Boolean);
-            resolvedUser = {
-              id: payload.uid || payload.sub || payload.id,
-              email: payload.email || payload.Email,
-              name: nameParts.join(' ') || payload.name || payload.fullname || undefined,
-              ...payload,
-            } as any;
-          }
+        const payload = decodeJwt(token);
+        if (payload) {
+          const nameParts = [
+            payload.firstName || payload.given_name || payload.firstname || payload.first_name,
+            payload.lastName || payload.family_name || payload.lastname || payload.last_name,
+          ].filter(Boolean);
+          
+          resolvedUser = {
+            id: payload.uid || payload.sub || payload.id,
+            email: payload.email || payload.Email,
+            name: payload.name || payload.username || payload.sub,
+            firstName: payload.firstName,
+            lastName: payload.lastName,
+            roles: payload.roles || payload.role || [],
+            ...payload,
+          } as User;
         }
       }
-
-      if (resolvedUser) {
-        localStorage.setItem('user', JSON.stringify(resolvedUser));
-        setUser(resolvedUser);
+      
+      // Si toujours pas d'utilisateur, créer un objet minimal
+      if (!resolvedUser) {
+        resolvedUser = {
+          email: email,
+          name: email.split('@')[0],
+          roles: ['Client']
+        };
       }
+      
+      // Sauvegarder l'utilisateur
+      localStorage.setItem('user', JSON.stringify(resolvedUser));
+      setUser(resolvedUser);
+      
       setLoading(false);
       return { ok: true };
     } catch (err: any) {
       setLoading(false);
-      return { ok: false, message: err?.message || 'Erreur connexion' };
+      return { ok: false, message: err?.message || 'Erreur de connexion' };
     }
   };
 
   const logout = () => {
-    // clear local storage and user
     localStorage.removeItem('accessToken');
     localStorage.removeItem('user');
     setUser(null);
-    // Optionally call backend logout to clear refresh token cookie
+    
     try {
       const base = import.meta.env.VITE_API_BASE_URL || 'https://localhost:7076/apigateway';
-      fetch(`${base}/Auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
+      fetch(`${base}/auth/logout`, { 
+        method: 'POST', 
+        credentials: 'include' 
+      }).catch(() => {});
     } catch {}
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, isAuthenticated: !!user, login, logout }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      loading, 
+      isAuthenticated: !!user, 
+      login, 
+      logout 
+    }}>
       {children}
     </AuthContext.Provider>
   );

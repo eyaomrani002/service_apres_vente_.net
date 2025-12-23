@@ -2,72 +2,78 @@ import { createTheme } from '@mui/material/styles';
 
 export const theme = createTheme({
   palette: {
-    mode: 'light',
     primary: {
-      main: '#2563eb',
-      light: '#60a5fa',
-      dark: '#1e40af',  
-      contrastText: '#ffffff',
+      main: '#6366F1', // Indigo moderne
+      light: '#818CF8',
+      dark: '#4F46E5',
+      contrastText: '#FFFFFF',
     },
     secondary: {
-      main: '#10b981',
-      light: '#34d399',
-      dark: '#047857',
-      contrastText: '#ffffff',
-    },
-    success: {
-      main: '#16a34a',
-      light: '#22c55e',
-      dark: '#166534',
-    },
-    warning: {
-      main: '#f59e0b',
-      light: '#fbbf24',
-      dark: '#b45309',
-    },
-    error: {
-      main: '#ef4444',
-      light: '#f87171',
-      dark: '#b91c1c',
+      main: '#10B981', // Émeraude
+      light: '#34D399',
+      dark: '#059669',
+      contrastText: '#FFFFFF',
     },
     background: {
-      default: '#f8fafc',
-      paper: '#ffffff',
+      default: '#F8FAFC',
+      paper: '#FFFFFF',
     },
     text: {
-      primary: '#0f172a',
-      secondary: '#334155',
+      primary: '#1E293B',
+      secondary: '#64748B',
+    },
+    success: {
+      main: '#10B981',
+    },
+    warning: {
+      main: '#F59E0B',
+    },
+    error: {
+      main: '#EF4444',
+    },
+    info: {
+      main: '#3B82F6',
     },
   },
   typography: {
-    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
     h1: {
+      fontWeight: 700,
       fontSize: '2.5rem',
-      fontWeight: 600,
+      letterSpacing: '-0.02em',
     },
     h2: {
+      fontWeight: 700,
       fontSize: '2rem',
-      fontWeight: 600,
+      letterSpacing: '-0.01em',
     },
     h3: {
+      fontWeight: 600,
       fontSize: '1.75rem',
-      fontWeight: 500,
     },
     h4: {
+      fontWeight: 600,
       fontSize: '1.5rem',
-      fontWeight: 500,
     },
     h5: {
+      fontWeight: 600,
       fontSize: '1.25rem',
-      fontWeight: 500,
     },
     h6: {
+      fontWeight: 600,
       fontSize: '1rem',
-      fontWeight: 500,
+    },
+    body1: {
+      fontSize: '1rem',
+      lineHeight: 1.6,
+    },
+    body2: {
+      fontSize: '0.875rem',
+      lineHeight: 1.57,
     },
   },
   shape: {
-    borderRadius: 16,
+    borderRadius: 12,
   },
   components: {
     MuiButton: {
@@ -76,33 +82,56 @@ export const theme = createTheme({
           textTransform: 'none',
           fontWeight: 600,
           borderRadius: 12,
-          paddingLeft: 18,
-          paddingRight: 18,
+          padding: '10px 24px',
+          boxShadow: '0 4px 14px 0 rgba(99, 102, 241, 0.39)',
+          '&:hover': {
+            boxShadow: '0 6px 20px rgba(99, 102, 241, 0.23)',
+            transform: 'translateY(-1px)',
+          },
+          transition: 'all 0.3s ease',
         },
-        sizeLarge: {
-          paddingTop: 10,
-          paddingBottom: 10,
+        containedPrimary: {
+          background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
         },
-      },
-    },
-    MuiFilledInput: {
-      styleOverrides: {
-        root: {
-          backgroundColor: 'rgba(255,255,255,0.03)',
-          borderRadius: 12,
-          paddingLeft: 12,
-        },
-        input: {
-          paddingTop: '10px',
-          paddingBottom: '10px',
+        outlined: {
+          borderWidth: 2,
+          '&:hover': {
+            borderWidth: 2,
+          },
         },
       },
     },
-    MuiPaper: {
+    MuiCard: {
       styleOverrides: {
         root: {
           borderRadius: 16,
-          boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
+          transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+          '&:hover': {
+            transform: 'translateY(-4px)',
+            boxShadow: '0 12px 28px rgba(0, 0, 0, 0.12)',
+          },
+        },
+      },
+    },
+    MuiTextField: {
+      styleOverrides: {
+        root: {
+          '& .MuiOutlinedInput-root': {
+            borderRadius: 12,
+            '&:hover .MuiOutlinedInput-notchedOutline': {
+              borderColor: '#6366F1',
+            },
+          },
+        },
+      },
+    },
+    MuiAppBar: {
+      styleOverrides: {
+        root: {
+          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+          backdropFilter: 'blur(10px)',
+          boxShadow: '0 1px 10px rgba(0, 0, 0, 0.1)',
         },
       },
     },

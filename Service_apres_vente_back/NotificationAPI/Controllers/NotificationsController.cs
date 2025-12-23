@@ -1,6 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
 using NotificationAPI.Models;
 using NotificationAPI.Models.Repositories;
+using NotificationAPI.Services;
 
 namespace NotificationAPI.Controllers
 {
@@ -9,20 +13,22 @@ namespace NotificationAPI.Controllers
     public class NotificationsController : Controller
     {
         private readonly INotificationRepository _repository;
+        private readonly INotificationService _service;
         private readonly ILogger<NotificationsController> _logger;
 
-        public NotificationsController(INotificationRepository repository, ILogger<NotificationsController> logger)
+        public NotificationsController(INotificationRepository repository, INotificationService service, ILogger<NotificationsController> logger)
         {
             _repository = repository;
+            _service = service;
             _logger = logger;
         }
 
         [HttpGet]
-        public ActionResult<IEnumerable<Notification>> GetNotifications([FromQuery] int take = 50)
+        public async Task<ActionResult<IEnumerable<Notification>>> GetNotifications([FromQuery] int take = 50)
         {
             try
             {
-                var items = _repository.GetRecent(take);
+                var items = await _service.GetRecentAsync(take);
                 return Ok(items);
             }
             catch (Exception ex)
@@ -33,11 +39,11 @@ namespace NotificationAPI.Controllers
         }
 
         [HttpGet("{id:guid}")]
-        public ActionResult<Notification> GetById(Guid id)
+        public async Task<ActionResult<Notification>> GetById(Guid id)
         {
             try
             {
-                var item = _repository.GetById(id);
+                var item = await _service.GetByIdAsync(id);
                 if (item == null) return NotFound();
                 return Ok(item);
             }
@@ -64,16 +70,16 @@ namespace NotificationAPI.Controllers
         }
 
         [HttpPost]
-        public ActionResult<Notification> Create(Notification notification)
+        public async Task<ActionResult<Notification>> Create(SendNotificationRequest request)
         {
             try
             {
                 if (!ModelState.IsValid)
+                {
                     return BadRequest(ModelState);
+                }
 
-                notification.Status = string.IsNullOrWhiteSpace(notification.Status) ? "sent" : notification.Status;
-                notification.CreatedAt = DateTime.UtcNow;
-                _repository.Add(notification);
+                var notification = await _service.SendAsync(request);
                 return CreatedAtAction(nameof(GetById), new { id = notification.Id }, notification);
             }
             catch (Exception ex)
@@ -115,6 +121,58 @@ namespace NotificationAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Erreur lors de DELETE /api/notifications/{id}");
+                return StatusCode(500, "Erreur serveur");
+            }
+        }
+
+        [HttpGet("export")]
+        public async Task<IActionResult> Export([FromQuery] DateTime? since = null, [FromQuery] string? type = null)
+        {
+            try
+            {
+                var payload = await _service.ExportAsync(since, type);
+                return File(payload, "text/csv", "notifications.csv");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de GET /api/notifications/export");
+                return StatusCode(500, "Erreur serveur");
+            }
+        }
+
+        [HttpGet("metrics")]
+        public async Task<IActionResult> Metrics()
+        {
+            try
+            {
+                var metrics = await _service.GetMetricsAsync();
+                return Ok(metrics);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de GET /api/notifications/metrics");
+                return StatusCode(500, "Erreur serveur");
+            }
+        }
+
+        [HttpGet("health")]
+        public async Task<IActionResult> Health()
+        {
+            try
+            {
+                var metrics = await _service.GetMetricsAsync();
+                return Ok(new
+                {
+                    status = "Healthy",
+                    totalNotifications = metrics.Total,
+                    lastNotification = metrics.LastNotificationAt,
+                    statusBreakdown = metrics.ByStatus,
+                    typeBreakdown = metrics.ByType
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de GET /api/notifications/health");
                 return StatusCode(500, "Erreur serveur");
             }
         }

@@ -63,7 +63,7 @@ namespace ClientAPI.Migrations
                         {
                             Id = 1,
                             Adresse = "Tunis, Tunisie",
-                            DateInscription = new DateTime(2025, 12, 17, 15, 17, 31, 805, DateTimeKind.Local).AddTicks(8269),
+                            DateInscription = new DateTime(2025, 12, 24, 12, 36, 52, 782, DateTimeKind.Local).AddTicks(5050),
                             Email = "mohamed@example.com",
                             Nom = "Mohamed Ben Ali",
                             Telephone = "12345678"
@@ -72,11 +72,76 @@ namespace ClientAPI.Migrations
                         {
                             Id = 2,
                             Adresse = "Sousse, Tunisie",
-                            DateInscription = new DateTime(2025, 12, 17, 15, 17, 31, 805, DateTimeKind.Local).AddTicks(8334),
+                            DateInscription = new DateTime(2025, 12, 24, 12, 36, 52, 782, DateTimeKind.Local).AddTicks(5104),
                             Email = "fatma@example.com",
                             Nom = "Fatma Ahmed",
                             Telephone = "87654321"
                         });
+                });
+
+            modelBuilder.Entity("ClientAPI.Models.Commande", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ClientId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("DateCreation")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Statut")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("En attente");
+
+                    b.Property<decimal>("Total")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId");
+
+                    b.HasIndex("DateCreation");
+
+                    b.ToTable("Commandes");
+                });
+
+            modelBuilder.Entity("ClientAPI.Models.CommandeLigne", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ArticleId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CommandeId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("MontantLigne")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("PrixUnitaire")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("Quantite")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ArticleId");
+
+                    b.HasIndex("CommandeId");
+
+                    b.ToTable("CommandeLignes");
                 });
 
             modelBuilder.Entity("ClientAPI.Models.Reclamation", b =>
@@ -195,6 +260,28 @@ namespace ClientAPI.Migrations
                     b.ToTable("ReclamationPiece");
                 });
 
+            modelBuilder.Entity("ClientAPI.Models.Commande", b =>
+                {
+                    b.HasOne("ClientAPI.Models.Client", "Client")
+                        .WithMany("Commandes")
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Client");
+                });
+
+            modelBuilder.Entity("ClientAPI.Models.CommandeLigne", b =>
+                {
+                    b.HasOne("ClientAPI.Models.Commande", "Commande")
+                        .WithMany("Lignes")
+                        .HasForeignKey("CommandeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Commande");
+                });
+
             modelBuilder.Entity("ClientAPI.Models.Reclamation", b =>
                 {
                     b.HasOne("ClientAPI.Models.Client", "Client")
@@ -217,7 +304,14 @@ namespace ClientAPI.Migrations
 
             modelBuilder.Entity("ClientAPI.Models.Client", b =>
                 {
+                    b.Navigation("Commandes");
+
                     b.Navigation("Reclamations");
+                });
+
+            modelBuilder.Entity("ClientAPI.Models.Commande", b =>
+                {
+                    b.Navigation("Lignes");
                 });
 
             modelBuilder.Entity("ClientAPI.Models.Reclamation", b =>

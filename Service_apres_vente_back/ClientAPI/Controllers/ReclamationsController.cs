@@ -2,6 +2,7 @@
 using ClientAPI.Models;
 using ClientAPI.Models.Repositories;
 using System.ComponentModel.DataAnnotations;
+using System.Net.Http.Json;
 
 namespace ClientAPI.Controllers
 {
@@ -14,6 +15,7 @@ namespace ClientAPI.Controllers
         private readonly ILogger<ReclamationsController> _logger;
         private readonly IWebHostEnvironment _environment;
         private readonly HttpClient _httpClient;
+        private const string NotificationEndpoint = "https://localhost:7076/apigateway/notifications";
 
         public ReclamationsController(
             IReclamationRepository repository,
@@ -27,6 +29,30 @@ namespace ClientAPI.Controllers
             _logger = logger;
             _environment = environment;
             _httpClient = httpClientFactory.CreateClient();
+        }
+
+        private async Task TrySendNotificationAsync(string recipient, string subject, string message, string type = "info")
+        {
+            try
+            {
+                var payload = new
+                {
+                    Type = type,
+                    Recipient = recipient,
+                    Subject = subject,
+                    Message = message
+                };
+
+                var response = await _httpClient.PostAsJsonAsync(NotificationEndpoint, payload);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("Notification non envoyée (status {Status}) pour {Recipient}", response.StatusCode, recipient);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Échec lors de l'envoi de notification vers {Recipient}", recipient);
+            }
         }
 
         // ========== ENDPOINTS RECLAMATIONS ==========
@@ -122,6 +148,23 @@ namespace ClientAPI.Controllers
                 reclamation.PiecesNecessaires ??= new List<ReclamationPiece>();
 
                 _repository.AddReclamation(reclamation);
+
+                // Notifier les administrateurs qu'un client a créé une nouvelle réclamation
+                try
+                {
+                    var client = _clientRepository.GetClientById(reclamation.ClientId);
+                    var clientLabel = client != null ? $"{client.Nom} (ID {client.Id})" : $"Client {reclamation.ClientId}";
+                    await TrySendNotificationAsync(
+                        recipient: "admins",
+                        subject: "Nouvelle réclamation client",
+                        message: $"{clientLabel} a soumis une réclamation #{reclamation.Id} le {DateTime.Now:dd/MM/yyyy}."
+                    );
+                }
+                catch (Exception exNotify)
+                {
+                    _logger.LogWarning(exNotify, "Notification admin non envoyée après création de réclamation {ReclamationId}", reclamation.Id);
+                }
+
                 return CreatedAtAction(nameof(GetReclamation), new { id = reclamation.Id }, reclamation);
             }
             catch (Exception ex)
@@ -133,7 +176,7 @@ namespace ClientAPI.Controllers
 
         // PUT: api/reclamations/5
         [HttpPut("{id}")]
-        public IActionResult UpdateReclamation(int id, Reclamation reclamation)
+        public async Task<IActionResult> UpdateReclamationAsync(int id, Reclamation reclamation)
         {
             try
             {
@@ -156,6 +199,24 @@ namespace ClientAPI.Controllers
                 var updated = _repository.UpdateReclamation(reclamation);
                 if (updated == null)
                     return NotFound();
+
+                // Notifier le client en cas de changement de statut
+                try
+                {
+                    if (!string.Equals(existing.Statut, updated.Statut, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var client = _clientRepository.GetClientById(updated.ClientId);
+                        if (client != null && !string.IsNullOrWhiteSpace(client.Email))
+                        {
+                            var message = $"Votre réclamation #{updated.Id} est maintenant '{updated.Statut}'.";
+                            await TrySendNotificationAsync(client.Email, "Mise à jour de votre réclamation", message);
+                        }
+                    }
+                }
+                catch (Exception exNotify)
+                {
+                    _logger.LogWarning(exNotify, "Notification client non envoyée après update de réclamation {ReclamationId}", id);
+                }
 
                 return Ok(updated);
             }
@@ -352,12 +413,31 @@ namespace ClientAPI.Controllers
                     if (interventionResponse.IsSuccessStatusCode)
                     {
                         _logger.LogInformation($"Intervention créée pour la réclamation {id}");
+                        // notifier le technicien
+                        _ = TrySendNotificationAsync($"technicien-{assignDto.TechnicienId}", "Nouvelle intervention assignée", $"Vous êtes assigné(e) sur l'intervention liée à la réclamation #{id}.");
                     }
                 }
                 catch (HttpRequestException ex)
                 {
                     _logger.LogWarning(ex, "Impossible de créer l'intervention, InterventionAPI non disponible");
                 }
+
+                // Notifier le client que la réclamation est prise en charge
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var client = _clientRepository.GetClientById(reclamation.ClientId);
+                        if (client != null && !string.IsNullOrWhiteSpace(client.Email))
+                        {
+                            await TrySendNotificationAsync(client.Email, "Réclamation prise en charge", $"Votre réclamation #{id} est assignée au technicien {assignDto.TechnicienId}.");
+                        }
+                    }
+                    catch (Exception exNotify)
+                    {
+                        _logger.LogWarning(exNotify, "Notification client non envoyée après assignation technicien {ReclamationId}", id);
+                    }
+                });
 
                 return Ok(new
                 {

@@ -1,6 +1,8 @@
 import { Article, ArticleStats } from '../types/article';
 
-const BASE = 'https://localhost:7076/apigateway/articles';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://localhost:7076/apigateway';
+const ARTICLE_BASE = import.meta.env.VITE_ARTICLE_BASE_URL || `${API_BASE}/articles`;
+const ARTICLE_UPLOAD_BASE = import.meta.env.VITE_ARTICLE_UPLOAD_BASE_URL || ARTICLE_BASE;
 
 async function handleResponse(res: Response) {
   if (res.status === 401) {
@@ -26,7 +28,7 @@ function getAuthHeaders(): Record<string, string> {
 
 export const articleService = {
   getAll: async (): Promise<Article[]> => {
-    const res = await fetch(`${BASE}`, { 
+    const res = await fetch(`${ARTICLE_BASE}`, { 
       headers: getAuthHeaders(),
       credentials: 'include'
     });
@@ -34,7 +36,7 @@ export const articleService = {
   },
   
   getById: async (id: number): Promise<Article> => {
-    const res = await fetch(`${BASE}/${id}`, { 
+    const res = await fetch(`${ARTICLE_BASE}/${id}`, { 
       headers: getAuthHeaders(),
       credentials: 'include'
     });
@@ -42,7 +44,7 @@ export const articleService = {
   },
   
   getByType: async (type: string): Promise<Article[]> => {
-    const res = await fetch(`${BASE}/type/${encodeURIComponent(type)}`, { 
+    const res = await fetch(`${ARTICLE_BASE}/type/${encodeURIComponent(type)}`, { 
       headers: getAuthHeaders(),
       credentials: 'include'
     });
@@ -50,7 +52,7 @@ export const articleService = {
   },
   
   search: async (reference: string): Promise<Article[]> => {
-    const res = await fetch(`${BASE}/search/${encodeURIComponent(reference)}`, { 
+    const res = await fetch(`${ARTICLE_BASE}/search/${encodeURIComponent(reference)}`, { 
       headers: getAuthHeaders(),
       credentials: 'include'
     });
@@ -62,7 +64,7 @@ export const articleService = {
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== null && v !== '') query.append(k, String(v));
     });
-    const res = await fetch(`${BASE}/advanced?${query.toString()}`, { 
+    const res = await fetch(`${ARTICLE_BASE}/advanced?${query.toString()}`, { 
       headers: getAuthHeaders(),
       credentials: 'include'
     });
@@ -70,7 +72,7 @@ export const articleService = {
   },
   
   create: async (article: Partial<Article>): Promise<Article> => {
-    const res = await fetch(`${BASE}`, {
+    const res = await fetch(`${ARTICLE_BASE}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       credentials: 'include',
@@ -80,7 +82,7 @@ export const articleService = {
   },
   
   update: async (id: number, article: Partial<Article>): Promise<Article> => {
-    const res = await fetch(`${BASE}/${id}`, {
+    const res = await fetch(`${ARTICLE_BASE}/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       credentials: 'include',
@@ -88,9 +90,22 @@ export const articleService = {
     });
     return handleResponse(res);
   },
+
+  uploadImage: async (id: number, file: File): Promise<{ url: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch(`${ARTICLE_UPLOAD_BASE}/${id}/upload-image`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+      body: formData,
+    });
+    return handleResponse(res);
+  },
   
   delete: async (id: number): Promise<void> => {
-    const res = await fetch(`${BASE}/${id}`, { 
+    const res = await fetch(`${ARTICLE_BASE}/${id}`, { 
       method: 'DELETE', 
       headers: getAuthHeaders(),
       credentials: 'include'
@@ -99,7 +114,7 @@ export const articleService = {
   },
   
   getStats: async (): Promise<ArticleStats> => {
-    const res = await fetch(`${BASE}/stats`, { 
+    const res = await fetch(`${ARTICLE_BASE}/stats`, { 
       headers: getAuthHeaders(),
       credentials: 'include'
     });
@@ -107,7 +122,7 @@ export const articleService = {
   },
   
   checkGarantie: async (id: number): Promise<boolean> => {
-    const res = await fetch(`${BASE}/${id}/garantie`, { 
+    const res = await fetch(`${ARTICLE_BASE}/${id}/garantie`, { 
       headers: getAuthHeaders(),
       credentials: 'include'
     });

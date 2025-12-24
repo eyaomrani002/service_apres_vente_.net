@@ -9,6 +9,7 @@ export interface Article {
   estSousGarantie: boolean;
   quantite?: number;
   fournisseur?: string;
+  imageUrl?: string;
 }
 
 export interface ArticleStats {

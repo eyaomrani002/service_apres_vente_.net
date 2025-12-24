@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using InterventionAPI.Models;
 using InterventionAPI.Models.Repositories;
+using System.Net.Http.Json;
 
 namespace InterventionAPI.Controllers
 {
@@ -11,6 +12,8 @@ namespace InterventionAPI.Controllers
         private readonly IInterventionRepository _repository;
         private readonly ILogger<InterventionsController> _logger;
         private readonly HttpClient _httpClient;
+        private const string NotificationEndpoint = "https://localhost:7076/apigateway/notifications";
+        private const string ClientApiBase = "https://localhost:7025/api";
 
         public InterventionsController(
             IInterventionRepository repository,
@@ -20,6 +23,41 @@ namespace InterventionAPI.Controllers
             _repository = repository;
             _logger = logger;
             _httpClient = httpClientFactory.CreateClient();
+        }
+
+        private async Task TrySendNotificationAsync(string recipient, string subject, string message, string type = "info")
+        {
+            try
+            {
+                var payload = new { Type = type, Recipient = recipient, Subject = subject, Message = message };
+                var resp = await _httpClient.PostAsJsonAsync(NotificationEndpoint, payload);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("Notification non envoyée (status {Status}) vers {Recipient}", resp.StatusCode, recipient);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Échec lors de l'envoi de notification vers {Recipient}", recipient);
+            }
+        }
+
+        private async Task<string?> GetClientEmailAsync(int clientId)
+        {
+            try
+            {
+                var resp = await _httpClient.GetAsync($"{ClientApiBase}/clients/{clientId}");
+                if (!resp.IsSuccessStatusCode) return null;
+                var json = await resp.Content.ReadAsStringAsync();
+                var doc = System.Text.Json.JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("email", out var emailEl) && emailEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                    return emailEl.GetString();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Impossible de récupérer l'email du client {ClientId}", clientId);
+            }
+            return null;
         }
 
         // ========== INTERVENTIONS ==========
@@ -106,6 +144,33 @@ namespace InterventionAPI.Controllers
 
                 // Utiliser la logique métier de garantie: gratuite si article sous garantie
                 var created = await _repository.CreateInterventionAvecGarantie(intervention);
+
+                // Notifier le client lié à la réclamation
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var reclResponse = await _httpClient.GetAsync($"{ClientApiBase}/reclamations/{intervention.ReclamationId}");
+                        if (reclResponse.IsSuccessStatusCode)
+                        {
+                            var reclJson = await reclResponse.Content.ReadAsStringAsync();
+                            var reclDoc = System.Text.Json.JsonDocument.Parse(reclJson);
+                            if (reclDoc.RootElement.TryGetProperty("clientId", out var cidEl))
+                            {
+                                var email = await GetClientEmailAsync(cidEl.GetInt32());
+                                if (!string.IsNullOrWhiteSpace(email))
+                                {
+                                    await TrySendNotificationAsync(email, "Intervention planifiée", $"Votre intervention #{created.Id} est planifiée (réclamation #{intervention.ReclamationId}).");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception exNotify)
+                    {
+                        _logger.LogWarning(exNotify, "Notification client non envoyée après création intervention {InterventionId}", created.Id);
+                    }
+                });
+
                 return CreatedAtAction(nameof(GetIntervention), new { id = created.Id }, created);
             }
             catch (Exception ex)
@@ -322,7 +387,7 @@ namespace InterventionAPI.Controllers
 
         // PUT: api/interventions/5/changer-statut
         [HttpPut("{id}/changer-statut")]
-        public IActionResult ChangerStatutIntervention(int id, [FromBody] string nouveauStatut)
+        public async Task<IActionResult> ChangerStatutIntervention(int id, [FromBody] string nouveauStatut)
         {
             try
             {
@@ -341,6 +406,33 @@ namespace InterventionAPI.Controllers
                 }
 
                 var updated = _repository.Update(intervention);
+
+                // Notification client pour changement de statut
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var reclResp = await _httpClient.GetAsync($"{ClientApiBase}/reclamations/{intervention.ReclamationId}");
+                        if (reclResp.IsSuccessStatusCode)
+                        {
+                            var reclJson = await reclResp.Content.ReadAsStringAsync();
+                            var reclDoc = System.Text.Json.JsonDocument.Parse(reclJson);
+                            if (reclDoc.RootElement.TryGetProperty("clientId", out var cidEl))
+                            {
+                                var email = await GetClientEmailAsync(cidEl.GetInt32());
+                                if (!string.IsNullOrWhiteSpace(email))
+                                {
+                                    await TrySendNotificationAsync(email, "Mise à jour intervention", $"L'intervention #{id} est maintenant '{nouveauStatut}'.");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception exNotify)
+                    {
+                        _logger.LogWarning(exNotify, "Notification client non envoyée pour changement statut intervention {InterventionId}", id);
+                    }
+                });
+
                 return Ok(updated);
             }
             catch (Exception ex)
@@ -369,6 +461,32 @@ namespace InterventionAPI.Controllers
                 var facture = _repository.CreerFacturePourIntervention(id);
                 if (facture == null)
                     return BadRequest("Erreur lors de la création de la facture");
+
+                // Notifier le client de la facture créée
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var reclResp = await _httpClient.GetAsync($"{ClientApiBase}/reclamations/{intervention.ReclamationId}");
+                        if (reclResp.IsSuccessStatusCode)
+                        {
+                            var reclJson = await reclResp.Content.ReadAsStringAsync();
+                            var reclDoc = System.Text.Json.JsonDocument.Parse(reclJson);
+                            if (reclDoc.RootElement.TryGetProperty("clientId", out var cidEl))
+                            {
+                                var email = await GetClientEmailAsync(cidEl.GetInt32());
+                                if (!string.IsNullOrWhiteSpace(email))
+                                {
+                                    await TrySendNotificationAsync(email, "Facture créée", $"Une facture ({facture.NumeroFacture}) a été générée pour l'intervention #{id}.");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception exNotify)
+                    {
+                        _logger.LogWarning(exNotify, "Notification facture non envoyée pour intervention {InterventionId}", id);
+                    }
+                });
 
                 return CreatedAtAction(nameof(GetFacture), new { id = facture.Id }, facture);
             }
@@ -472,6 +590,33 @@ namespace InterventionAPI.Controllers
                     facture.NumeroFacture = _repository.GenererNumeroFacture();
 
                 _repository.AddFacture(facture);
+
+                // Notifier le client pour la création de facture
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var reclResp = await _httpClient.GetAsync($"{ClientApiBase}/reclamations/{intervention.ReclamationId}");
+                        if (reclResp.IsSuccessStatusCode)
+                        {
+                            var reclJson = await reclResp.Content.ReadAsStringAsync();
+                            var reclDoc = System.Text.Json.JsonDocument.Parse(reclJson);
+                            if (reclDoc.RootElement.TryGetProperty("clientId", out var cidEl))
+                            {
+                                var email = await GetClientEmailAsync(cidEl.GetInt32());
+                                if (!string.IsNullOrWhiteSpace(email))
+                                {
+                                    await TrySendNotificationAsync(email, "Facture disponible", $"Votre facture {facture.NumeroFacture} est disponible pour l'intervention #{facture.InterventionId}.");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception exNotify)
+                    {
+                        _logger.LogWarning(exNotify, "Notification client non envoyée après création facture {FactureId}", facture.Id);
+                    }
+                });
+
                 return CreatedAtAction(nameof(GetFacture), new { id = facture.Id }, facture);
             }
             catch (Exception ex)
@@ -620,6 +765,40 @@ namespace InterventionAPI.Controllers
                     facture.DatePaiement = DateTime.Now;
 
                 var updated = _repository.UpdateFacture(facture);
+
+                // Notifier le client si paiement confirmé
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        if (string.Equals(nouveauStatut, "Payée", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var intervention = _repository.GetById(facture.InterventionId);
+                            if (intervention != null)
+                            {
+                                var reclResp = await _httpClient.GetAsync($"{ClientApiBase}/reclamations/{intervention.ReclamationId}");
+                                if (reclResp.IsSuccessStatusCode)
+                                {
+                                    var reclJson = await reclResp.Content.ReadAsStringAsync();
+                                    var reclDoc = System.Text.Json.JsonDocument.Parse(reclJson);
+                                    if (reclDoc.RootElement.TryGetProperty("clientId", out var cidEl))
+                                    {
+                                        var email = await GetClientEmailAsync(cidEl.GetInt32());
+                                        if (!string.IsNullOrWhiteSpace(email))
+                                        {
+                                            await TrySendNotificationAsync(email, "Facture payée", $"Votre facture {facture.NumeroFacture} a été réglée. Merci.");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception exNotify)
+                    {
+                        _logger.LogWarning(exNotify, "Notification paiement facture non envoyée {FactureId}", facture.Id);
+                    }
+                });
+
                 return Ok(updated);
             }
             catch (Exception ex)

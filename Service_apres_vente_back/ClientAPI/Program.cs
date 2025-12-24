@@ -27,6 +27,7 @@ builder.Services.AddDbContext<ClientAPIContext>(options =>
 // Register repositories
 builder.Services.AddScoped<IClientRepository, ClientRepository>();
 builder.Services.AddScoped<IReclamationRepository, ReclamationRepository>();
+builder.Services.AddScoped<ICommandeRepository, CommandeRepository>();
 
 // Configure CORS
 builder.Services.AddCors(options =>

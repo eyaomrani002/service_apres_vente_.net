@@ -46,6 +46,10 @@ namespace ArticleAPI.Migrations
                     b.Property<bool>("EstEnStock")
                         .HasColumnType("bit");
 
+                    b.Property<string>("ImageUrl")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
                     b.Property<string>("LieuInstallation")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");

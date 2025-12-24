@@ -12,6 +12,8 @@ namespace ClientAPI.Data
 
         public DbSet<Client> Clients { get; set; }
         public DbSet<Reclamation> Reclamations { get; set; }
+        public DbSet<Commande> Commandes { get; set; }
+        public DbSet<CommandeLigne> CommandeLignes { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -108,6 +110,47 @@ namespace ClientAPI.Data
                     ArticleId = 2
                 }
             );
+
+            // Configuration Commande
+            modelBuilder.Entity<Commande>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Statut)
+                    .IsRequired()
+                    .HasMaxLength(30)
+                    .HasDefaultValue("En attente");
+
+                entity.Property(e => e.Total)
+                    .HasColumnType("decimal(18,2)");
+
+                entity.HasOne(e => e.Client)
+                    .WithMany(c => c.Commandes)
+                    .HasForeignKey(e => e.ClientId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasMany(e => e.Lignes)
+                    .WithOne(l => l.Commande)
+                    .HasForeignKey(l => l.CommandeId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.ClientId);
+                entity.HasIndex(e => e.DateCreation);
+            });
+
+            // Configuration CommandeLigne
+            modelBuilder.Entity<CommandeLigne>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.MontantLigne)
+                    .HasColumnType("decimal(18,2)");
+
+                entity.Property(e => e.PrixUnitaire)
+                    .HasColumnType("decimal(18,2)");
+
+                entity.HasIndex(e => e.ArticleId);
+            });
         }
     }
 }

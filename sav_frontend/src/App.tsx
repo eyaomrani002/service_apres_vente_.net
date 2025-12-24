@@ -14,6 +14,7 @@ import './assets/styles/global.css';
 import MainLayout from './components/layout/MainLayout';
 import AuthLayout from './components/auth/AuthLayout';
 import { AuthProvider, AuthContext } from './contexts/AuthContext';
+import { CartProvider } from './contexts/CartContext';
 
 // Pages
 import LoginPage from './pages/auth/LoginPage';
@@ -30,6 +31,9 @@ import ReclamationsPage from './pages/dashboard/ReclamationsPage';
 import InterventionsPage from './pages/dashboard/InterventionsPage';
 import CalendarPage from './pages/dashboard/CalendarPage';
 import ReportingPage from './pages/dashboard/ReportingPage';
+import FacturesPage from './pages/dashboard/FacturesPage';
+import CatalogPage from './pages/catalog/CatalogPage';
+import CartPage from './pages/cart/CartPage';
 
 function AppContent() {
   const { isAuthenticated, loading } = useContext(AuthContext);
@@ -40,7 +44,7 @@ function AppContent() {
     <Router>
       <Routes>
         {/* Root: redirect depending on auth state */}
-        <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />} />
+        <Route path="/" element={isAuthenticated ? <Navigate to="/catalog" replace /> : <Navigate to="/login" replace />} />
 
         {/* Public auth layout */}
         <Route element={<AuthLayout />}>
@@ -52,6 +56,8 @@ function AppContent() {
         {/* Protected routes: MainLayout is only mounted when authenticated */}
         <Route element={isAuthenticated ? <MainLayout /> : <Navigate to="/login" replace />}>
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/catalog" element={<CatalogPage />} />
+          <Route path="/cart" element={<CartPage />} />
           <Route path="/articles" element={<ArticlesPage />} />
           <Route path="/clients" element={<ClientsPage />} />
           <Route path="/users" element={<UsersPage />} />
@@ -59,6 +65,7 @@ function AppContent() {
           <Route path="/interventions" element={<InterventionsPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/reports" element={<ReportingPage />} />
+          <Route path="/factures" element={<FacturesPage />} />
           <Route path="/profile" element={<ProfilePage />} />
         </Route>
 
@@ -83,9 +90,11 @@ function App() {
           },
         }}
       />
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
+      <CartProvider>
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
+      </CartProvider>
     </ThemeProvider>
   );
 }

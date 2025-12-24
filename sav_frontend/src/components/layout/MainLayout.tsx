@@ -8,6 +8,7 @@ import {
   Typography,
   Divider,
   IconButton,
+  Button,
   ListItem,
   ListItemButton,
   ListItemIcon,
@@ -22,10 +23,12 @@ import {
   Menu as MenuIcon,
   Dashboard,
   Inventory,
+  ShoppingCart,
   People,
   Assignment,
   Build,
   Assessment,
+  ReceiptLong,
   Settings,
   Notifications,
   CalendarMonth,
@@ -41,16 +44,19 @@ import {
 import { useTheme } from '../../contexts/ThemeContext';
 import NotificationsMenu from '../notifications/NotificationsMenu';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { useCart } from '../../contexts/CartContext';
 
 const drawerWidth = 240;
 
 const menuItems = [
   { text: 'Tableau de bord', icon: <Dashboard />, path: '/dashboard' },
+  { text: 'Catalogue', icon: <Inventory />, path: '/catalog' },
   { text: 'Articles', icon: <Inventory />, path: '/articles' },
   { text: 'Clients', icon: <People />, path: '/clients' },
   { text: 'Utilisateurs', icon: <Group />, path: '/users' },
   { text: 'Réclamations', icon: <Assignment />, path: '/reclamations' },
   { text: 'Interventions', icon: <Build />, path: '/interventions' },
+  { text: 'Factures', icon: <ReceiptLong />, path: '/factures' },
   { text: 'Calendrier', icon: <CalendarMonth />, path: '/calendar' },
   { text: 'Rapports', icon: <Assessment />, path: '/reports' },
   { text: 'Paramètres', icon: <Settings />, path: '/settings' },
@@ -60,10 +66,12 @@ const MainLayout: React.FC = () => {
   const [open, setOpen] = useState(true);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [notificationsAnchorEl, setNotificationsAnchorEl] = useState<null | HTMLElement>(null);
+  const [cartAnchorEl, setCartAnchorEl] = useState<null | HTMLElement>(null);
   const [user, setUser] = useState<any>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { dark, shadow, toggleDark, toggleShadow } = useTheme();
+  const { items: cartItems, total: cartTotal, count: cartCount, removeItem } = useCart();
 
   useEffect(() => {
     try {
@@ -97,6 +105,14 @@ const MainLayout: React.FC = () => {
     setNotificationsAnchorEl(null);
   };
 
+  const handleCartOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setCartAnchorEl(event.currentTarget);
+  };
+
+  const handleCartClose = () => {
+    setCartAnchorEl(null);
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -106,6 +122,19 @@ const MainLayout: React.FC = () => {
   const handleProfile = () => {
     navigate('/profile');
     handleMenuClose();
+  };
+
+  const formatPrice = (value: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'TND' }).format(value);
+
+  const resolveImage = (url?: string) => {
+    if (!url) return undefined;
+    if (url.startsWith('http')) return url;
+    const base = import.meta.env.VITE_FILES_BASE_URL
+      || import.meta.env.VITE_ARTICLE_BASE_URL
+      || import.meta.env.VITE_API_BASE_URL
+      || 'https://localhost:7174';
+    const normalized = url.startsWith('/') ? url : `/${url}`;
+    return `${base}${normalized}`;
   };
 
  
@@ -151,6 +180,80 @@ const MainLayout: React.FC = () => {
             </IconButton>
           </Tooltip>
             <NotificationsMenu anchorEl={notificationsAnchorEl} open={Boolean(notificationsAnchorEl)} onClose={handleNotificationsClose} />
+
+          {/* Cart */}
+          <Tooltip title="Panier">
+            <IconButton
+              size="large"
+              color="inherit"
+              onClick={handleCartOpen}
+              sx={{ mr: 1 }}
+            >
+              <Badge badgeContent={cartCount} color="error">
+                <ShoppingCart />
+              </Badge>
+            </IconButton>
+          </Tooltip>
+          <Menu
+            anchorEl={cartAnchorEl}
+            open={Boolean(cartAnchorEl)}
+            onClose={handleCartClose}
+            PaperProps={{ sx: { width: 360, p: 1 } }}
+          >
+            <Box sx={{ px: 2, py: 1 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Votre Panier</Typography>
+              <Typography variant="caption" color="text.secondary">{cartCount} article(s)</Typography>
+            </Box>
+            <Divider />
+            {cartItems.length === 0 && (
+              <Box sx={{ p: 2, textAlign: 'center', color: 'text.secondary' }}>Panier vide</Box>
+            )}
+            {cartItems.map((item) => (
+              <Box key={item.id} sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1 }}>
+                <Box
+                  sx={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: 2,
+                    overflow: 'hidden',
+                    mr: 1.5,
+                    bgcolor: 'rgba(0,0,0,0.04)',
+                  }}
+                >
+                  {resolveImage(item.imageUrl) ? (
+                    <img src={resolveImage(item.imageUrl)} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : null}
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="body2" noWrap sx={{ fontWeight: 700 }}>{item.name}</Typography>
+                  <Typography variant="caption" color="text.secondary">{item.quantity} × {formatPrice(item.price)}</Typography>
+                </Box>
+                <Typography variant="body2" sx={{ mr: 1 }}>{formatPrice(item.price * item.quantity)}</Typography>
+                <IconButton size="small" onClick={() => removeItem(item.id)}>
+                  ✕
+                </IconButton>
+              </Box>
+            ))}
+            {cartItems.length > 0 && (
+              <Box>
+                <Divider />
+                <Box sx={{ px: 2, py: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="subtitle2">Total</Typography>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>{formatPrice(cartTotal)}</Typography>
+                </Box>
+                <Box sx={{ px: 2, pb: 1.5 }}>
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    color="primary"
+                    onClick={() => { handleCartClose(); navigate('/cart'); }}
+                  >
+                    Voir le panier
+                  </Button>
+                </Box>
+              </Box>
+            )}
+          </Menu>
 
           {/* Theme toggles */}
           <Tooltip title={dark ? 'Passer en clair' : 'Passer en sombre'}>

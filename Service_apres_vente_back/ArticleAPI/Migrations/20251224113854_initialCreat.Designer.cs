@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace ArticleAPI.Migrations
 {
     [DbContext(typeof(ArticleAPIContext))]
-    [Migration("20251216225650_initial")]
-    partial class initial
+    [Migration("20251224113854_initialCreat")]
+    partial class initialCreat
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -48,6 +48,10 @@ namespace ArticleAPI.Migrations
 
                     b.Property<bool>("EstEnStock")
                         .HasColumnType("bit");
+
+                    b.Property<string>("ImageUrl")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
 
                     b.Property<string>("LieuInstallation")
                         .HasMaxLength(200)

@@ -34,6 +34,9 @@ namespace ClientAPI.Models
         [JsonIgnore]
         public virtual ICollection<Reclamation> Reclamations { get; set; } = new List<Reclamation>();
 
+        [JsonIgnore]
+        public virtual ICollection<Commande> Commandes { get; set; } = new List<Commande>();
+
         // Propriétés calculées
         [Display(Name = "Nombre de réclamations")]
         public int NombreReclamations => Reclamations?.Count ?? 0;

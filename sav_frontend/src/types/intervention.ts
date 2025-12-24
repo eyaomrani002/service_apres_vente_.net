@@ -22,3 +22,17 @@ export interface InterventionStats {
   CoutsMoyens?: any;
   ParTechnicien?: any;
 }
+
+// Paramètres utilisés par la recherche avancée côté backend
+export interface InterventionFilterParams {
+  searchTerm?: string;
+  reclamationId?: number;
+  technicienId?: number;
+  statut?: string;
+  dateDebut?: string;
+  dateFin?: string;
+  estGratuite?: boolean;
+  coutMin?: number;
+  coutMax?: number;
+  sortBy?: string;
+}

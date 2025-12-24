@@ -5,6 +5,9 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Hosting;
+using System.IO;
+using Microsoft.AspNetCore.Http;
 
 namespace ArticleAPI.Controllers
 {
@@ -15,12 +18,18 @@ namespace ArticleAPI.Controllers
         private readonly IArticleRepository _repository;
         private readonly ILogger<ArticlesController> _logger;
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IWebHostEnvironment _environment;
 
-        public ArticlesController(IArticleRepository repository, ILogger<ArticlesController> logger, IHttpClientFactory httpClientFactory)
+        public ArticlesController(
+            IArticleRepository repository,
+            ILogger<ArticlesController> logger,
+            IHttpClientFactory httpClientFactory,
+            IWebHostEnvironment environment)
         {
             _repository = repository;
             _logger = logger;
             _httpClientFactory = httpClientFactory;
+            _environment = environment;
         }
 
         // GET: api/articles
@@ -215,6 +224,52 @@ namespace ArticleAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Erreur lors de DELETE /api/articles/{id}");
+                return StatusCode(500, "Erreur serveur");
+            }
+        }
+
+        // POST: api/articles/5/upload-image
+        [HttpPost("{id}/upload-image")]
+        public IActionResult UploadImage(int id, IFormFile file)
+        {
+            try
+            {
+                var article = _repository.GetById(id);
+                if (article == null)
+                    return NotFound();
+
+                if (file == null || file.Length == 0)
+                    return BadRequest("Aucun fichier fourni");
+
+                var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
+                var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+                if (string.IsNullOrEmpty(ext) || !allowedExtensions.Contains(ext))
+                    return BadRequest("Extension non autorisée (jpg, png, gif, webp)");
+
+                if (file.Length > 5 * 1024 * 1024)
+                    return BadRequest("Fichier trop volumineux (max 5MB)");
+
+                var webRoot = _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath ?? Directory.GetCurrentDirectory(), "wwwroot");
+                var uploadsRoot = Path.Combine(webRoot, "uploads", "articles");
+                if (!Directory.Exists(uploadsRoot))
+                    Directory.CreateDirectory(uploadsRoot);
+
+                var fileName = $"{Guid.NewGuid()}{ext}";
+                var filePath = Path.Combine(uploadsRoot, fileName);
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    file.CopyTo(stream);
+                }
+
+                var relativeUrl = $"/uploads/articles/{fileName}";
+                article.ImageUrl = relativeUrl;
+                _repository.Update(article);
+
+                return Ok(new { url = relativeUrl });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Erreur lors de POST /api/articles/{id}/upload-image");
                 return StatusCode(500, "Erreur serveur");
             }
         }

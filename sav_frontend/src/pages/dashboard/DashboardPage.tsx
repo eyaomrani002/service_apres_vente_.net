@@ -1,280 +1,928 @@
-import React from 'react';
+// DashboardPage.tsx - Version corrigée
+import React, { useEffect, useState } from 'react';
 import {
   Paper,
   Box,
   Typography,
   Button,
+  Grid,
+  Card,
+  CardContent,
+  Avatar,
+  LinearProgress,
+  Chip,
+  IconButton,
+  Tooltip,
+  CircularProgress // IMPORT MANQUANT AJOUTÉ
 } from '@mui/material';
+import { styled, keyframes } from '@mui/material/styles';
 import {
   Add,
   TrendingUp,
+  TrendingDown,
+  ArrowForward,
+  MoreVert,
+  Refresh,
+  CalendarToday,
+  Assignment,
+  Build,
+  People,
+  Inventory,
+  Receipt,
+  PieChart,
+  Notifications,
+  Warning,
+  Schedule
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import StatsCard from '../../components/common/ui/StatsCard';
 import AuthContext from '../../contexts/AuthContext';
 import PageTitle from '../../components/common/PageTitle';
-import {
-  Inventory,
-  People,
-  Assignment,
-  Build,
-  Receipt,
-  Timeline,
-  PieChart,
-} from '@mui/icons-material';
+import { articleService } from '../../services/articleService';
+import { clientService } from '../../services/clientService';
+import { interventionService } from '../../services/interventionService';
+import { reclamationService } from '../../services/reclamationService';
+
+// Animations
+const fadeIn = keyframes`
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+`;
+
+const pulse = keyframes`
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+`;
+
+// Styled Components
+const ModernPaper = styled(Paper)(({ theme }) => ({
+  borderRadius: '24px',
+  padding: '28px',
+  background: 'rgba(255, 255, 255, 0.98)',
+  border: '1px solid rgba(33, 150, 243, 0.15)',
+  boxShadow: '0 16px 40px rgba(33, 150, 243, 0.1)',
+  animation: `${fadeIn} 0.5s ease`,
+  transition: 'all 0.3s ease',
+  '&:hover': {
+    boxShadow: '0 20px 50px rgba(33, 150, 243, 0.15)',
+  },
+}));
+
+const ModernCard = styled(Card)(({ theme }) => ({
+  borderRadius: '20px',
+  border: '1px solid rgba(0, 0, 0, 0.08)',
+  background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.95))',
+  boxShadow: '0 12px 36px rgba(0, 0, 0, 0.08)',
+  transition: 'all 0.3s ease',
+  '&:hover': {
+    transform: 'translateY(-8px)',
+    boxShadow: '0 20px 50px rgba(33, 150, 243, 0.2)',
+    borderColor: 'rgba(33, 150, 243, 0.3)',
+  },
+}));
+
+const StatsAvatar = styled(Avatar)(({ theme }) => ({
+  width: 56,
+  height: 56,
+  background: 'linear-gradient(135deg, #2196F3 0%, #42A5F5 100%)',
+  boxShadow: '0 12px 24px rgba(33, 150, 243, 0.4)',
+  animation: `${pulse} 2s infinite`,
+}));
+
+const GradientButton = styled(Button)(({ theme }) => ({
+  background: 'linear-gradient(135deg, #2196F3 0%, #00BCD4 100%)',
+  color: '#fff',
+  fontWeight: 700,
+  padding: '14px 32px',
+  borderRadius: '16px',
+  textTransform: 'none',
+  boxShadow: '0 12px 28px rgba(33, 150, 243, 0.3)',
+  transition: 'all 0.3s ease',
+  fontSize: '15px',
+  '&:hover': {
+    transform: 'translateY(-4px)',
+    boxShadow: '0 20px 40px rgba(33, 150, 243, 0.4)',
+    background: 'linear-gradient(135deg, #1976D2 0%, #0097A7 100%)',
+  },
+}));
+
+const QuickActionButton = styled(Button)(({ theme }) => ({
+  borderRadius: '16px',
+  padding: '20px 16px',
+  height: '100px',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px',
+  border: '2px solid rgba(33, 150, 243, 0.1)',
+  background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.9))',
+  transition: 'all 0.3s ease',
+  '&:hover': {
+    background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.05), rgba(0, 188, 212, 0.05))',
+    borderColor: '#2196F3',
+    transform: 'translateY(-4px)',
+    boxShadow: '0 12px 28px rgba(33, 150, 243, 0.2)',
+  },
+}));
+
+const ActivityItem = styled(Box)(({ theme }) => ({
+  padding: '16px',
+  borderRadius: '12px',
+  background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(248, 250, 252, 0.8))',
+  border: '1px solid rgba(0, 0, 0, 0.06)',
+  transition: 'all 0.3s ease',
+  '&:hover': {
+    background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.04), rgba(0, 188, 212, 0.04))',
+    transform: 'translateX(4px)',
+    boxShadow: '0 8px 24px rgba(33, 150, 243, 0.1)',
+  },
+}));
+
+const ProgressBar = styled(LinearProgress)(({ theme }) => ({
+  height: '8px',
+  borderRadius: '4px',
+  backgroundColor: 'rgba(33, 150, 243, 0.1)',
+  '& .MuiLinearProgress-bar': {
+    borderRadius: '4px',
+    background: 'linear-gradient(90deg, #2196F3 0%, #00BCD4 100%)',
+  },
+}));
+
+const StatChip = styled(Chip)(({ theme, color }: any) => ({
+  fontWeight: 700,
+  height: '32px',
+  borderRadius: '16px',
+  background: color?.background || 'rgba(33, 150, 243, 0.1)',
+  color: color?.text || '#2196F3',
+  border: `1px solid ${color?.border || 'rgba(33, 150, 243, 0.2)'}`,
+  '& .MuiChip-label': {
+    paddingLeft: '12px',
+    paddingRight: '12px',
+    fontSize: '13px',
+  },
+}));
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    articles: { total: 0, enStock: 0 },
+    clients: { total: 0, nouveaux: 0 },
+    reclamations: { total: 0, enCours: 0 },
+    interventions: { total: 0, enAttente: 0 }
+  });
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [performance, setPerformance] = useState(94);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
+    setLoading(true);
+    try {
+      // Charger les données en parallèle
+      const [
+        articles,
+        clients,
+        reclamations,
+        interventions
+      ] = await Promise.all([
+        articleService.getAll(),
+        clientService.getAll(),
+        reclamationService.getAll(),
+        interventionService.getAll()
+      ]);
+
+      // Calculer les statistiques
+      const currentMonth = new Date().getMonth();
+      const currentYear = new Date().getFullYear();
+
+      setStats({
+        articles: {
+          total: articles.length,
+          enStock: articles.filter(a => a.estEnStock).length
+        },
+        clients: {
+          total: clients.length,
+          nouveaux: clients.filter(c => {
+            if (c.dateInscription) {
+              const date = new Date(c.dateInscription);
+              return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+            }
+            return false;
+          }).length
+        },
+        reclamations: {
+          total: reclamations.length,
+          enCours: reclamations.filter(r => 
+            r.statut?.toLowerCase() === 'en cours' || 
+            r.statut?.toLowerCase() === 'nouvelle'
+          ).length
+        },
+        interventions: {
+          total: interventions.length,
+          enAttente: interventions.filter(i => 
+            i.statut?.toLowerCase() === 'planifiée'
+          ).length
+        }
+      });
+
+      // Simuler l'activité récente
+      setRecentActivity([
+        { 
+          id: 1, 
+          text: 'Nouvelle réclamation #1234 créée', 
+          time: 'Il y a 5 min', 
+          type: 'reclamation',
+          color: '#FF9800'
+        },
+        { 
+          id: 2, 
+          text: 'Intervention #5678 terminée', 
+          time: 'Il y a 1 heure', 
+          type: 'intervention',
+          color: '#4CAF50'
+        },
+        { 
+          id: 3, 
+          text: 'Client Jean Dupont ajouté', 
+          time: 'Il y a 2 heures', 
+          type: 'client',
+          color: '#2196F3'
+        },
+        { 
+          id: 4, 
+          text: 'Article SAN-123 réapprovisionné', 
+          time: 'Il y a 3 heures', 
+          type: 'article',
+          color: '#9C27B0'
+        },
+        { 
+          id: 5, 
+          text: 'Facture #7890 générée', 
+          time: 'Il y a 4 heures', 
+          type: 'facture',
+          color: '#00BCD4'
+        },
+      ]);
+
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const statsData = [
     {
       title: 'Articles',
-      value: '156',
+      value: stats.articles.total.toString(),
       icon: Inventory,
       color: 'primary' as const,
-      subtitle: '24 en stock',
+      subtitle: `${stats.articles.enStock} en stock`,
       trend: { value: 12, isPositive: true },
+      gradient: 'linear-gradient(135deg, #9C27B0 0%, #BA68C8 100%)'
     },
     {
       title: 'Clients',
-      value: '89',
+      value: stats.clients.total.toString(),
       icon: People,
       color: 'secondary' as const,
-      subtitle: '5 nouveaux ce mois',
+      subtitle: `${stats.clients.nouveaux} nouveaux ce mois`,
       trend: { value: 8, isPositive: true },
+      gradient: 'linear-gradient(135deg, #2196F3 0%, #00BCD4 100%)'
     },
     {
       title: 'Réclamations',
-      value: '42',
+      value: stats.reclamations.total.toString(),
       icon: Assignment,
       color: 'warning' as const,
-      subtitle: '12 en cours',
+      subtitle: `${stats.reclamations.enCours} en cours`,
       trend: { value: 5, isPositive: false },
+      gradient: 'linear-gradient(135deg, #FF9800 0%, #FFB74D 100%)'
     },
     {
       title: 'Interventions',
-      value: '28',
+      value: stats.interventions.total.toString(),
       icon: Build,
       color: 'success' as const,
-      subtitle: '8 en attente',
+      subtitle: `${stats.interventions.enAttente} en attente`,
       trend: { value: 15, isPositive: true },
+      gradient: 'linear-gradient(135deg, #4CAF50 0%, #66BB6A 100%)'
     },
   ];
 
-  const recentActions = [
-    { id: 1, text: 'Nouvelle réclamation #1234 créée', time: 'Il y a 5 min', type: 'reclamation' },
-    { id: 2, text: 'Intervention #5678 terminée', time: 'Il y a 1 heure', type: 'intervention' },
-    { id: 3, text: 'Client Jean Dupont ajouté', time: 'Il y a 2 heures', type: 'client' },
-    { id: 4, text: 'Article SAN-123 réapprovisionné', time: 'Il y a 3 heures', type: 'article' },
+  const quickActions = [
+    { 
+      label: 'Nouvelle réclamation', 
+      path: '/reclamations/new', 
+      icon: <Assignment sx={{ fontSize: 32, color: '#FF9800' }} />,
+      color: '#FF9800'
+    },
+    { 
+      label: 'Ajouter un client', 
+      path: '/clients/new', 
+      icon: <People sx={{ fontSize: 32, color: '#2196F3' }} />,
+      color: '#2196F3'
+    },
+    { 
+      label: 'Créer une intervention', 
+      path: '/interventions/new', 
+      icon: <Build sx={{ fontSize: 32, color: '#4CAF50' }} />,
+      color: '#4CAF50'
+    },
+    { 
+      label: 'Ajouter un article', 
+      path: '/articles/new', 
+      icon: <Inventory sx={{ fontSize: 32, color: '#9C27B0' }} />,
+      color: '#9C27B0'
+    },
   ];
 
-  const quickActions = [
-    { label: 'Nouvelle réclamation', path: '/reclamations/new', icon: <Add /> },
-    { label: 'Ajouter un client', path: '/clients/new', icon: <Add /> },
-    { label: 'Créer une intervention', path: '/interventions/new', icon: <Add /> },
-    { label: 'Ajouter un article', path: '/articles/new', icon: <Add /> },
+  const statusStats = [
+    { label: 'En attente', value: 12, color: { background: 'rgba(255, 152, 0, 0.1)', text: '#FF9800', border: 'rgba(255, 152, 0, 0.2)' } },
+    { label: 'En cours', value: 18, color: { background: 'rgba(33, 150, 243, 0.1)', text: '#2196F3', border: 'rgba(33, 150, 243, 0.2)' } },
+    { label: 'Résolues', value: 28, color: { background: 'rgba(76, 175, 80, 0.1)', text: '#4CAF50', border: 'rgba(76, 175, 80, 0.2)' } },
+    { label: 'Fermées', value: 5, color: { background: 'rgba(244, 67, 54, 0.1)', text: '#f44336', border: 'rgba(244, 67, 54, 0.2)' } },
   ];
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('fr-FR', { 
+      style: 'currency', 
+      currency: 'EUR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(value);
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        minHeight: '60vh' 
+      }}>
+        <Box sx={{ textAlign: 'center' }}>
+          <CircularProgress size={60} sx={{ color: '#2196F3', mb: 3 }} />
+          <Typography variant="h6" color="text.secondary">
+            Chargement du tableau de bord...
+          </Typography>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
-    <Box>
-      {/* show user name if authenticated (use fallbacks if `name` missing) */}
+    <Box sx={{ p: { xs: 2, md: 3 } }}>
+      {/* En-tête avec informations utilisateur */}
       <AuthContext.Consumer>
         {({ user }) => {
           if (!user) return null;
           const displayName =
             user.name ||
             [user.firstName, user.lastName].filter(Boolean).join(' ') ||
-            user.given_name && user.family_name ? `${user.given_name} ${user.family_name}` :
+            (user.given_name && user.family_name ? `${user.given_name} ${user.family_name}` : '') ||
             user.email ||
             user.uid ||
             user.sub ||
             undefined;
+          
           return displayName ? (
-            <Typography variant="subtitle1" sx={{ mb: 1 }}>
-              Connecté en tant que {displayName}
-            </Typography>
+            <Box sx={{ 
+              mb: 3, 
+              p: 2, 
+              borderRadius: '16px', 
+              background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.05), rgba(0, 188, 212, 0.05))',
+              border: '1px solid rgba(33, 150, 243, 0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 2
+            }}>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: '#2196F3' }}>
+                  Bonjour, {displayName} 👋
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Bienvenue sur votre tableau de bord
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Typography variant="body2" color="text.secondary">
+                  {new Date().toLocaleDateString('fr-FR', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                  })}
+                </Typography>
+                <CalendarToday sx={{ color: '#00BCD4' }} />
+              </Box>
+            </Box>
           ) : null;
         }}
       </AuthContext.Consumer>
+
+      {/* Titre principal */}
       <PageTitle
         title="Tableau de bord"
         subtitle="Aperçu global de votre activité"
         breadcrumbs={[{ label: 'Tableau de bord' }]}
       />
-      
-      {/* Stats Cards (responsive CSS grid to avoid MUI Grid v2 migration warnings) */}
-      <Box sx={{
-        display: 'grid',
-        gap: 3,
-        mb: 4,
-        gridTemplateColumns: {
-          xs: '1fr',
-          sm: 'repeat(2, 1fr)',
-          md: 'repeat(4, 1fr)'
-        }
-      }}>
-        {statsData.map((stat, index) => (
-          <Box key={index}>
-            <StatsCard {...stat} />
-          </Box>
-        ))}
+
+      {/* Bouton de rafraîchissement */}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
+        <Tooltip title="Rafraîchir les données">
+          <IconButton 
+            onClick={loadDashboardData}
+            sx={{ 
+              color: '#2196F3',
+              backgroundColor: 'rgba(33, 150, 243, 0.1)',
+              '&:hover': {
+                backgroundColor: 'rgba(33, 150, 243, 0.2)',
+                transform: 'rotate(180deg)',
+              },
+              transition: 'all 0.3s ease',
+            }}
+          >
+            <Refresh />
+          </IconButton>
+        </Tooltip>
       </Box>
-      
-      {/* Quick Actions */}
-      <Paper sx={{ p: 3, mb: 4 }}>
-        <Typography variant="h6" gutterBottom>
-          Actions rapides
-        </Typography>
-        <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' } }}>
-          {quickActions.map((action, index) => (
-            <Button
-              key={index}
-              fullWidth
-              variant="outlined"
-              startIcon={action.icon}
-              onClick={() => navigate(action.path)}
-              sx={{ height: 80, flexDirection: 'column', gap: 1 }}
-            >
-              <Typography variant="body2">{action.label}</Typography>
-            </Button>
-          ))}
+
+      {/* Cartes de statistiques */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        {statsData.map((stat, index) => (
+          <Grid item xs={12} sm={6} md={3} key={index}>
+            <ModernCard>
+              <CardContent sx={{ p: 3 }}>
+                <Box sx={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'flex-start',
+                  mb: 2 
+                }}>
+                  <Box>
+                    <Typography variant="body2" sx={{ 
+                      color: 'text.secondary', 
+                      fontWeight: 600,
+                      mb: 0.5 
+                    }}>
+                      {stat.title}
+                    </Typography>
+                    <Typography variant="h3" sx={{ 
+                      fontWeight: 800, 
+                      background: stat.gradient,
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      mb: 1
+                    }}>
+                      {stat.value}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {stat.subtitle}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ 
+                    p: 1.5, 
+                    borderRadius: '12px',
+                    background: `${stat.gradient}20`,
+                  }}>
+                    <stat.icon sx={{ 
+                      fontSize: 30, 
+                      background: stat.gradient,
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                    }} />
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', mt: 2 }}>
+                  {stat.trend.isPositive ? (
+                    <TrendingUp sx={{ fontSize: 18, color: '#4CAF50', mr: 0.5 }} />
+                  ) : (
+                    <TrendingDown sx={{ fontSize: 18, color: '#f44336', mr: 0.5 }} />
+                  )}
+                  <Typography variant="caption" sx={{ 
+                    color: stat.trend.isPositive ? '#4CAF50' : '#f44336',
+                    fontWeight: 600 
+                  }}>
+                    {stat.trend.isPositive ? '+' : ''}{stat.trend.value}%
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                    vs mois dernier
+                  </Typography>
+                </Box>
+              </CardContent>
+            </ModernCard>
+          </Grid>
+        ))}
+      </Grid>
+
+      {/* Actions rapides */}
+      <ModernPaper sx={{ mb: 4 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          mb: 3 
+        }}>
+          <Typography variant="h5" sx={{ fontWeight: 700, color: '#1a1a1a' }}>
+            Actions rapides
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Accédez rapidement aux fonctions principales
+          </Typography>
         </Box>
-      </Paper>
-      
-      {/* Recent Activity and Charts */}
-      <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
-        {/* Recent Activity */}
-        <Box>
-          <Paper sx={{ p: 3, height: '100%' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6">Activité récente</Typography>
-              <Button size="small" onClick={() => navigate('/activity')}>
+        <Grid container spacing={2}>
+          {quickActions.map((action, index) => (
+            <Grid item xs={12} sm={6} md={3} key={index}>
+              <QuickActionButton 
+                fullWidth
+                onClick={() => navigate(action.path)}
+              >
+                {action.icon}
+                <Typography variant="body2" sx={{ 
+                  fontWeight: 600, 
+                  color: action.color,
+                  textAlign: 'center'
+                }}>
+                  {action.label}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Cliquez pour accéder
+                </Typography>
+              </QuickActionButton>
+            </Grid>
+          ))}
+        </Grid>
+      </ModernPaper>
+
+      {/* Activité récente et Performance */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        {/* Activité récente */}
+        <Grid item xs={12} md={6}>
+          <ModernPaper sx={{ height: '100%' }}>
+            <Box sx={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              mb: 3 
+            }}>
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
+                  Activité récente
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Dernières actions dans le système
+                </Typography>
+              </Box>
+              <Button 
+                size="small" 
+                onClick={() => navigate('/activity')}
+                endIcon={<ArrowForward />}
+                sx={{ 
+                  fontWeight: 600,
+                  color: '#2196F3',
+                  '&:hover': {
+                    backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                  }
+                }}
+              >
                 Voir tout
               </Button>
             </Box>
             <Box>
-              {recentActions.map((action) => (
-                <Box
-                  key={action.id}
-                  sx={{
+              {recentActivity.map((activity) => (
+                <ActivityItem key={activity.id} sx={{ mb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+                    <Box sx={{ 
+                      width: '40px', 
+                      height: '40px', 
+                      borderRadius: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: `${activity.color}20`,
+                      flexShrink: 0
+                    }}>
+                      <Box sx={{ 
+                        width: '8px', 
+                        height: '8px', 
+                        borderRadius: '50%',
+                        background: activity.color 
+                      }} />
+                    </Box>
+                    <Box sx={{ flexGrow: 1 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                        {activity.text}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {activity.time}
+                      </Typography>
+                    </Box>
+                    <IconButton size="small" sx={{ color: 'text.secondary' }}>
+                      <MoreVert />
+                    </IconButton>
+                  </Box>
+                </ActivityItem>
+              ))}
+            </Box>
+          </ModernPaper>
+        </Grid>
+
+        {/* Performance */}
+        <Grid item xs={12} md={6}>
+          <ModernPaper sx={{ height: '100%' }}>
+            <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>
+              Performance du mois
+            </Typography>
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              flexDirection: 'column',
+              height: 'calc(100% - 60px)'
+            }}>
+              <Box sx={{ 
+                position: 'relative',
+                width: '180px',
+                height: '180px',
+                mb: 3
+              }}>
+                <Box sx={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  borderRadius: '50%',
+                  background: 'conic-gradient(#4CAF50 0% 94%, #e0e0e0 94% 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 8px 32px rgba(76, 175, 80, 0.3)'
+                }}>
+                  <Box sx={{
+                    width: '140px',
+                    height: '140px',
+                    borderRadius: '50%',
+                    background: '#fff',
                     display: 'flex',
                     alignItems: 'center',
-                    py: 1.5,
-                    borderBottom: '1px solid',
-                    borderColor: 'divider',
-                    '&:last-child': { borderBottom: 'none' },
-                  }}
-                >
-                  <Box
-                    sx={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: '50%',
-                      bgcolor: action.type === 'reclamation' ? 'warning.main' :
-                               action.type === 'intervention' ? 'success.main' :
-                               action.type === 'client' ? 'secondary.main' : 'primary.main',
-                      mr: 2,
-                    }}
-                  />
-                  <Box sx={{ flexGrow: 1 }}>
-                    <Typography variant="body2">{action.text}</Typography>
+                    justifyContent: 'center',
+                    flexDirection: 'column'
+                  }}>
+                    <Typography variant="h2" sx={{ 
+                      fontWeight: 800, 
+                      background: 'linear-gradient(135deg, #4CAF50 0%, #66BB6A 100%)',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent'
+                    }}>
+                      {performance}%
+                    </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {action.time}
+                      Taux de résolution
                     </Typography>
                   </Box>
                 </Box>
-              ))}
-            </Box>
-          </Paper>
-        </Box>
-        
-        {/* Performance Chart */}
-        <Box>
-          <Paper sx={{ p: 3, height: '100%' }}>
-            <Typography variant="h6" gutterBottom>
-              Performance du mois
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100% - 48px)' }}>
+              </Box>
               <Box sx={{ textAlign: 'center' }}>
-                <Timeline sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />
-                <Typography variant="h4" color="primary.main">
-                  94%
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Taux de résolution
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mt: 1 }}>
-                  <TrendingUp sx={{ color: 'success.main', mr: 0.5 }} />
-                  <Typography variant="caption" color="success.main">
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1 }}>
+                  <TrendingUp sx={{ color: '#4CAF50', mr: 1 }} />
+                  <Typography variant="body2" sx={{ fontWeight: 600, color: '#4CAF50' }}>
                     +2.5% vs mois dernier
                   </Typography>
                 </Box>
+                <Typography variant="body2" color="text.secondary">
+                  94 réclamations résolues sur 100
+                </Typography>
               </Box>
             </Box>
-          </Paper>
-        </Box>
-      </Box>
-      
-      {/* Additional Info */}
-      <Box sx={{ display: 'grid', gap: 3, mt: 2, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
-        <Box>
-          <Paper sx={{ p: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-              <PieChart sx={{ mr: 1, color: 'secondary.main' }} />
-              <Typography variant="h6">Réclamations par statut</Typography>
+          </ModernPaper>
+        </Grid>
+      </Grid>
+
+      {/* Statuts et Facturation */}
+      <Grid container spacing={3}>
+        {/* Réclamations par statut */}
+        <Grid item xs={12} md={6}>
+          <ModernPaper>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+              <PieChart sx={{ mr: 2, color: '#9C27B0', fontSize: 32 }} />
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                  Réclamations par statut
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Distribution des réclamations
+                </Typography>
+              </Box>
             </Box>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-              {[
-                { label: 'En attente', value: 12, color: 'warning.main' },
-                { label: 'En cours', value: 18, color: 'info.main' },
-                { label: 'Résolues', value: 28, color: 'success.main' },
-                { label: 'Fermées', value: 5, color: 'error.main' },
-              ].map((item, index) => (
-                <Box
-                  key={index}
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    p: 2,
-                    minWidth: 100,
-                  }}
-                >
-                  <Typography variant="h5" sx={{ color: item.color }}>
-                    {item.value}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {item.label}
-                  </Typography>
-                </Box>
+            <Grid container spacing={2}>
+              {statusStats.map((item, index) => (
+                <Grid item xs={6} key={index}>
+                  <Box sx={{ 
+                    p: 2, 
+                    borderRadius: '16px',
+                    background: item.color.background,
+                    border: `1px solid ${item.color.border}`,
+                    textAlign: 'center'
+                  }}>
+                    <Typography variant="h3" sx={{ 
+                      fontWeight: 800, 
+                      color: item.color.text,
+                      mb: 1
+                    }}>
+                      {item.value}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {item.label}
+                    </Typography>
+                  </Box>
+                </Grid>
               ))}
-            </Box>
-          </Paper>
-        </Box>
-        
-        <Box>
-          <Paper sx={{ p: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-              <Receipt sx={{ mr: 1, color: 'success.main' }} />
-              <Typography variant="h6">Facturation du mois</Typography>
-            </Box>
-            <Box>
-              <Typography variant="h4" gutterBottom>
-                12 850 €
+            </Grid>
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>
+                Progression mensuelle
               </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <TrendingUp sx={{ color: 'success.main', mr: 1 }} />
-                <Typography variant="body2" color="success.main">
+              <ProgressBar variant="determinate" value={75} />
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                <Typography variant="caption" color="text.secondary">
+                  75% des objectifs atteints
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Objectif: 100 réclamations
+                </Typography>
+              </Box>
+            </Box>
+          </ModernPaper>
+        </Grid>
+
+        {/* Facturation */}
+        <Grid item xs={12} md={6}>
+          <ModernPaper>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+              <Receipt sx={{ mr: 2, color: '#00BCD4', fontSize: 32 }} />
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                  Facturation du mois
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Aperçu financier
+                </Typography>
+              </Box>
+            </Box>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h2" sx={{ 
+                fontWeight: 800, 
+                background: 'linear-gradient(135deg, #00BCD4 0%, #26C6DA 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent'
+              }}>
+                {formatCurrency(12850)}
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+                <TrendingUp sx={{ color: '#4CAF50', mr: 1 }} />
+                <Typography variant="body2" sx={{ fontWeight: 600, color: '#4CAF50' }}>
                   +1 250 € vs mois dernier
                 </Typography>
               </Box>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                28 factures générées ce mois
+            </Box>
+            <Box sx={{ 
+              p: 2, 
+              borderRadius: '16px',
+              background: 'linear-gradient(135deg, rgba(0, 188, 212, 0.05), rgba(38, 198, 218, 0.05))',
+              border: '1px solid rgba(0, 188, 212, 0.1)'
+            }}>
+              <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>
+                Détails de la facturation
+              </Typography>
+              <Grid container spacing={1}>
+                <Grid item xs={6}>
+                  <Typography variant="caption" color="text.secondary">
+                    Factures générées:
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    28
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="caption" color="text.secondary">
+                    Moyenne par facture:
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {formatCurrency(459)}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="caption" color="text.secondary">
+                    En attente de paiement:
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600, color: '#FF9800' }}>
+                    5
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="caption" color="text.secondary">
+                    Taux de recouvrement:
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600, color: '#4CAF50' }}>
+                    92%
+                  </Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          </ModernPaper>
+        </Grid>
+      </Grid>
+
+      {/* Section notifications importantes */}
+      <ModernPaper sx={{ mt: 3 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between', 
+          mb: 3 
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Notifications sx={{ mr: 2, color: '#FF9800', fontSize: 32 }} />
+            <Box>
+              <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                Notifications importantes
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Éléments nécessitant votre attention
               </Typography>
             </Box>
-          </Paper>
+          </Box>
+          <StatChip 
+            label="3 nouvelles" 
+            chipColor={{ background: 'rgba(255, 152, 0, 0.1)', text: '#FF9800', border: 'rgba(255, 152, 0, 0.2)' }}
+          />
         </Box>
-      </Box>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={4}>
+            <Box sx={{ 
+              p: 2, 
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, rgba(255, 152, 0, 0.05), rgba(255, 193, 7, 0.05))',
+              border: '1px solid rgba(255, 152, 0, 0.1)'
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Warning sx={{ fontSize: 20, color: '#FF9800', mr: 1 }} />
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Réclamations en retard
+                </Typography>
+              </Box>
+              <Typography variant="body2" color="text.secondary">
+                2 réclamations dépassent le délai de traitement
+              </Typography>
+            </Box>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Box sx={{ 
+              p: 2, 
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, rgba(244, 67, 54, 0.05), rgba(239, 83, 80, 0.05))',
+              border: '1px solid rgba(244, 67, 54, 0.1)'
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Warning sx={{ fontSize: 20, color: '#f44336', mr: 1 }} />
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Articles en rupture
+                </Typography>
+              </Box>
+              <Typography variant="body2" color="text.secondary">
+                5 articles nécessitent un réapprovisionnement
+              </Typography>
+            </Box>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Box sx={{ 
+              p: 2, 
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.05), rgba(0, 188, 212, 0.05))',
+              border: '1px solid rgba(33, 150, 243, 0.1)'
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Schedule sx={{ fontSize: 20, color: '#2196F3', mr: 1 }} />
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Interventions à planifier
+                </Typography>
+              </Box>
+              <Typography variant="body2" color="text.secondary">
+                3 interventions nécessitent une date d'intervention
+              </Typography>
+            </Box>
+          </Grid>
+        </Grid>
+      </ModernPaper>
     </Box>
   );
 };

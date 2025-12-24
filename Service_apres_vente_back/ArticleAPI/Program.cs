@@ -4,6 +4,14 @@ using ArticleAPI.Models.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Ensure consistent web root when the working directory differs
+var webRootCandidate = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
+if (!Directory.Exists(webRootCandidate))
+{
+    webRootCandidate = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+}
+builder.Environment.WebRootPath = webRootCandidate;
+
 // Add services to the container
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -40,6 +48,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
+app.UseStaticFiles();
 app.UseAuthorization();
 app.MapControllers();
 

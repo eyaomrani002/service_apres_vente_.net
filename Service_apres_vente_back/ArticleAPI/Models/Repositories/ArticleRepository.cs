@@ -35,6 +35,7 @@ namespace ArticleAPI.Models.Repositories
                 existing.Description = article.Description;
                 existing.PrixAchat = article.PrixAchat;
                 existing.EstEnStock = article.EstEnStock;
+                existing.ImageUrl = article.ImageUrl;
                 _context.SaveChanges();
             }
             return existing;

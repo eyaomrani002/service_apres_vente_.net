@@ -31,6 +31,9 @@ namespace ArticleAPI.Models
         [Required]
         [Range(0, 999999.99)]
         public decimal PrixAchat { get; set; }
+
+        [StringLength(300)]
+        public string? ImageUrl { get; set; }
         // Ajouter ces propriétés pour le SAV
         [Display(Name = "Numéro de série")]
         [StringLength(100)]

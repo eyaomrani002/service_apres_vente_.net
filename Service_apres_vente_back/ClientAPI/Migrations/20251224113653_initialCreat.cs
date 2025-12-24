@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace ClientAPI.Migrations
 {
     /// <inheritdoc />
-    public partial class intial : Migration
+    public partial class initialCreat : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -28,6 +28,28 @@ namespace ClientAPI.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Clients", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Commandes",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    ClientId = table.Column<int>(type: "int", nullable: false),
+                    Statut = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false, defaultValue: "En attente"),
+                    DateCreation = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    Total = table.Column<decimal>(type: "decimal(18,2)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Commandes", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Commandes_Clients_ClientId",
+                        column: x => x.ClientId,
+                        principalTable: "Clients",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -53,6 +75,29 @@ namespace ClientAPI.Migrations
                         name: "FK_Reclamations_Clients_ClientId",
                         column: x => x.ClientId,
                         principalTable: "Clients",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "CommandeLignes",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    CommandeId = table.Column<int>(type: "int", nullable: false),
+                    ArticleId = table.Column<int>(type: "int", nullable: false),
+                    Quantite = table.Column<int>(type: "int", nullable: false),
+                    PrixUnitaire = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    MontantLigne = table.Column<decimal>(type: "decimal(18,2)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_CommandeLignes", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_CommandeLignes_Commandes_CommandeId",
+                        column: x => x.CommandeId,
+                        principalTable: "Commandes",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
@@ -85,8 +130,8 @@ namespace ClientAPI.Migrations
                 columns: new[] { "Id", "Adresse", "DateInscription", "Email", "Nom", "Telephone" },
                 values: new object[,]
                 {
-                    { 1, "Tunis, Tunisie", new DateTime(2025, 12, 17, 15, 17, 31, 805, DateTimeKind.Local).AddTicks(8269), "mohamed@example.com", "Mohamed Ben Ali", "12345678" },
-                    { 2, "Sousse, Tunisie", new DateTime(2025, 12, 17, 15, 17, 31, 805, DateTimeKind.Local).AddTicks(8334), "fatma@example.com", "Fatma Ahmed", "87654321" }
+                    { 1, "Tunis, Tunisie", new DateTime(2025, 12, 24, 12, 36, 52, 782, DateTimeKind.Local).AddTicks(5050), "mohamed@example.com", "Mohamed Ben Ali", "12345678" },
+                    { 2, "Sousse, Tunisie", new DateTime(2025, 12, 24, 12, 36, 52, 782, DateTimeKind.Local).AddTicks(5104), "fatma@example.com", "Fatma Ahmed", "87654321" }
                 });
 
             migrationBuilder.InsertData(
@@ -103,6 +148,26 @@ namespace ClientAPI.Migrations
                 table: "Clients",
                 column: "Email",
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CommandeLignes_ArticleId",
+                table: "CommandeLignes",
+                column: "ArticleId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CommandeLignes_CommandeId",
+                table: "CommandeLignes",
+                column: "CommandeId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Commandes_ClientId",
+                table: "Commandes",
+                column: "ClientId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Commandes_DateCreation",
+                table: "Commandes",
+                column: "DateCreation");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ReclamationPiece_ReclamationId",
@@ -129,7 +194,13 @@ namespace ClientAPI.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
+                name: "CommandeLignes");
+
+            migrationBuilder.DropTable(
                 name: "ReclamationPiece");
+
+            migrationBuilder.DropTable(
+                name: "Commandes");
 
             migrationBuilder.DropTable(
                 name: "Reclamations");

@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace ArticleAPI.Migrations
 {
     /// <inheritdoc />
-    public partial class initial : Migration
+    public partial class initialCreat : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -26,6 +26,7 @@ namespace ArticleAPI.Migrations
                     DureeGarantieMois = table.Column<int>(type: "int", nullable: false),
                     Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     PrixAchat = table.Column<decimal>(type: "decimal(10,2)", nullable: false),
+                    ImageUrl = table.Column<string>(type: "nvarchar(300)", maxLength: 300, nullable: true),
                     NumeroSerie = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
                     DateInstallation = table.Column<DateTime>(type: "datetime2", nullable: true),
                     LieuInstallation = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
@@ -39,12 +40,12 @@ namespace ArticleAPI.Migrations
 
             migrationBuilder.InsertData(
                 table: "Articles",
-                columns: new[] { "Id", "DateAchat", "DateInstallation", "Description", "DureeGarantieMois", "EstEnStock", "LieuInstallation", "Nom", "NumeroSerie", "PrixAchat", "Reference", "Type", "TypeInstallation" },
+                columns: new[] { "Id", "DateAchat", "DateInstallation", "Description", "DureeGarantieMois", "EstEnStock", "ImageUrl", "LieuInstallation", "Nom", "NumeroSerie", "PrixAchat", "Reference", "Type", "TypeInstallation" },
                 values: new object[,]
                 {
-                    { 1, new DateTime(2024, 1, 15, 0, 0, 0, 0, DateTimeKind.Unspecified), null, "Robinet thermostatique pour salle de bain", 24, true, null, "Robinet thermostatique", null, 89.99m, "SAN-001", "Sanitaire", null },
-                    { 2, new DateTime(2023, 11, 20, 0, 0, 0, 0, DateTimeKind.Unspecified), null, "Radiateur en aluminium 1500W", 36, true, null, "Radiateur à eau chaude", null, 249.99m, "CHAU-001", "Chauffage", null },
-                    { 3, new DateTime(2022, 6, 10, 0, 0, 0, 0, DateTimeKind.Unspecified), null, "WC suspendu avec réservoir encastré", 24, false, null, "WC suspendu", null, 459.99m, "SAN-002", "Sanitaire", null }
+                    { 1, new DateTime(2024, 1, 15, 0, 0, 0, 0, DateTimeKind.Unspecified), null, "Robinet thermostatique pour salle de bain", 24, true, null, null, "Robinet thermostatique", null, 89.99m, "SAN-001", "Sanitaire", null },
+                    { 2, new DateTime(2023, 11, 20, 0, 0, 0, 0, DateTimeKind.Unspecified), null, "Radiateur en aluminium 1500W", 36, true, null, null, "Radiateur à eau chaude", null, 249.99m, "CHAU-001", "Chauffage", null },
+                    { 3, new DateTime(2022, 6, 10, 0, 0, 0, 0, DateTimeKind.Unspecified), null, "WC suspendu avec réservoir encastré", 24, false, null, null, "WC suspendu", null, 459.99m, "SAN-002", "Sanitaire", null }
                 });
 
             migrationBuilder.CreateIndex(

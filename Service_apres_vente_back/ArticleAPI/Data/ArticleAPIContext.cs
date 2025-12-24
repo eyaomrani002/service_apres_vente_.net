@@ -35,6 +35,9 @@ namespace ArticleAPI.Data
                 entity.Property(e => e.Description)
                     .HasMaxLength(500);
 
+                entity.Property(e => e.ImageUrl)
+                    .HasMaxLength(300);
+
                 entity.Property(e => e.PrixAchat)
                     .HasColumnType("decimal(10,2)");
 

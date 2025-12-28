@@ -5,10 +5,14 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Http;
+using System.Collections.Concurrent;
 
 namespace AuthAPI.Services
 {
@@ -22,6 +26,11 @@ namespace AuthAPI.Services
         private readonly IConfiguration _configuration;
         private readonly ILogger<AuthService> _logger;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IHttpClientFactory _httpClientFactory;
+
+        // Circuit breaker pour éviter les appels répétés en cas d'échec
+        private static readonly ConcurrentDictionary<string, DateTime> _syncFailures = new();
+        private static readonly TimeSpan _syncFailureCooldown = TimeSpan.FromMinutes(5);
 
         public AuthService(
             UserManager<ApplicationUser> userManager,
@@ -31,7 +40,8 @@ namespace AuthAPI.Services
             ApplicationDbContext context,
             IConfiguration configuration,
             ILogger<AuthService> logger,
-            IHttpContextAccessor httpContextAccessor) // AJOUTER ce paramètre
+            IHttpContextAccessor httpContextAccessor,
+            IHttpClientFactory httpClientFactory)
         {
             _userManager = userManager;
             _roleManager = roleManager;
@@ -40,7 +50,8 @@ namespace AuthAPI.Services
             _context = context;
             _configuration = configuration;
             _logger = logger;
-            _httpContextAccessor = httpContextAccessor; // INITIALISER
+            _httpContextAccessor = httpContextAccessor;
+            _httpClientFactory = httpClientFactory;
         }
 
         public async Task<AuthModel> RegisterAsync(RegisterModel model)
@@ -78,15 +89,20 @@ namespace AuthAPI.Services
 
             await _userManager.AddToRoleAsync(user, defaultRole);
 
+            // Synchronisation améliorée avec circuit breaker
+            var syncEnabled = _configuration.GetValue<bool>("ClientSync:Enabled", true);
+            if (syncEnabled)
+            {
+                _ = Task.Run(async () => await EnsureClientProfileAsync(user));
+            }
+
             var jwtSecurityToken = await CreateJwtToken(user);
             var refreshToken = await _refreshTokenService.GenerateRefreshToken(user.Id);
             var rolesList = await _userManager.GetRolesAsync(user);
 
-            // Mettre à jour la dernière connexion
             user.LastLoginAt = DateTime.UtcNow;
             await _userManager.UpdateAsync(user);
 
-            // Enregistrer l'audit de création
             await RecordLoginAudit(user, true, "Registration");
 
             return new AuthModel
@@ -110,7 +126,6 @@ namespace AuthAPI.Services
         {
             var authModel = new AuthModel();
 
-            // Vérifier les tentatives de connexion
             if (!await CheckLoginAttempts(model.Email))
             {
                 authModel.Message = "Account is temporarily locked. Try again later.";
@@ -121,10 +136,8 @@ namespace AuthAPI.Services
 
             if (user is null || !await _userManager.CheckPasswordAsync(user, model.Password))
             {
-                // Enregistrer l'échec
                 await RecordFailedLogin(model.Email, "Invalid credentials");
 
-                // Mettre à jour le compteur dans l'utilisateur
                 if (user != null)
                 {
                     user.FailedLoginAttempts++;
@@ -140,7 +153,6 @@ namespace AuthAPI.Services
                 return authModel;
             }
 
-            // Vérifier si le compte est actif
             if (!user.IsActive)
             {
                 authModel.Message = "Account is deactivated. Please contact administrator.";
@@ -148,7 +160,6 @@ namespace AuthAPI.Services
                 return authModel;
             }
 
-            // Vérifier si le compte est verrouillé
             if (user.LockoutEnd.HasValue && user.LockoutEnd > DateTime.UtcNow)
             {
                 authModel.Message = $"Account is locked until {user.LockoutEnd}";
@@ -156,19 +167,23 @@ namespace AuthAPI.Services
                 return authModel;
             }
 
-            // Réinitialiser les tentatives après succès
             await ResetLoginAttempts(model.Email);
             user.FailedLoginAttempts = 0;
             user.LockoutEnd = null;
 
-            // Enregistrer l'audit de connexion
             await RecordLoginAudit(user, true, "Login successful");
+
+            // Synchronisation en arrière-plan
+            var syncEnabled = _configuration.GetValue<bool>("ClientSync:Enabled", true);
+            if (syncEnabled)
+            {
+                _ = Task.Run(async () => await EnsureClientProfileAsync(user));
+            }
 
             var jwtSecurityToken = await CreateJwtToken(user);
             var refreshToken = await _refreshTokenService.GenerateRefreshToken(user.Id);
             var rolesList = await _userManager.GetRolesAsync(user);
 
-            // Mettre à jour la dernière connexion
             user.LastLoginAt = DateTime.UtcNow;
             await _userManager.UpdateAsync(user);
 
@@ -194,7 +209,6 @@ namespace AuthAPI.Services
 
             try
             {
-                // Valider le token JWT existant
                 var principal = GetPrincipalFromExpiredToken(model.Token);
                 if (principal == null)
                 {
@@ -216,7 +230,6 @@ namespace AuthAPI.Services
                     return authModel;
                 }
 
-                // Valider le refresh token
                 var isValidRefreshToken = await _refreshTokenService.ValidateRefreshToken(userId, model.RefreshToken);
                 if (!isValidRefreshToken)
                 {
@@ -224,11 +237,9 @@ namespace AuthAPI.Services
                     return authModel;
                 }
 
-                // Révoquer l'ancien refresh token
                 var newRefreshToken = await _refreshTokenService.GenerateRefreshToken(user.Id);
                 await _refreshTokenService.RevokeRefreshToken(model.RefreshToken, newRefreshToken.Token);
 
-                // Générer un nouveau token JWT
                 var newJwtToken = await CreateJwtToken(user);
 
                 var rolesList = await _userManager.GetRolesAsync(user);
@@ -281,7 +292,6 @@ namespace AuthAPI.Services
             if (user is null)
                 return "Invalid user ID";
 
-            // Vérifier si le rôle existe, sinon le créer
             if (!await _roleManager.RoleExistsAsync(model.Role))
             {
                 await _roleManager.CreateAsync(new IdentityRole(model.Role));
@@ -291,6 +301,34 @@ namespace AuthAPI.Services
                 return "User already assigned to this role";
 
             var result = await _userManager.AddToRoleAsync(user, model.Role);
+
+            // Si on ajoute le rôle Client, synchroniser avec ClientAPI
+            if (result.Succeeded && model.Role == "Client")
+            {
+                var syncEnabled = _configuration.GetValue<bool>("ClientSync:Enabled", true);
+                if (syncEnabled)
+                {
+                    _ = Task.Run(async () => await EnsureClientProfileAsync(user));
+                }
+            }
+
+            return result.Succeeded ? string.Empty : "Something went wrong";
+        }
+
+        public async Task<string> RemoveRoleAsync(AddRoleModel model)
+        {
+            var user = await _userManager.FindByIdAsync(model.UserId);
+
+            if (user is null)
+                return "Invalid user ID";
+
+            if (!await _roleManager.RoleExistsAsync(model.Role))
+                return "Role does not exist";
+
+            if (!await _userManager.IsInRoleAsync(user, model.Role))
+                return "User is not assigned to this role";
+
+            var result = await _userManager.RemoveFromRoleAsync(user, model.Role);
 
             return result.Succeeded ? string.Empty : "Something went wrong";
         }
@@ -327,9 +365,14 @@ namespace AuthAPI.Services
             var roleClaims = new List<Claim>();
 
             foreach (var role in roles)
+            {
+                // Add multiple claim types for compatibility with different consumers
+                roleClaims.Add(new Claim(ClaimTypes.Role, role));
+                roleClaims.Add(new Claim("role", role));
                 roleClaims.Add(new Claim("roles", role));
+            }
 
-            var claims = new[]
+            var claims = new List<Claim>
             {
                 new Claim(JwtRegisteredClaimNames.Sub, user.UserName),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
@@ -337,9 +380,17 @@ namespace AuthAPI.Services
                 new Claim("uid", user.Id),
                 new Claim("firstName", user.FirstName),
                 new Claim("lastName", user.LastName)
+            };
+
+            if (user.TechnicienId.HasValue)
+            {
+                claims.Add(new Claim("technicienId", user.TechnicienId.Value.ToString()));
             }
-            .Union(userClaims)
-            .Union(roleClaims);
+
+            claims = claims
+                .Union(userClaims)
+                .Union(roleClaims)
+                .ToList();
 
             var symmetricSecurityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwt.Key));
             var signingCredentials = new SigningCredentials(symmetricSecurityKey, SecurityAlgorithms.HmacSha256);
@@ -422,6 +473,17 @@ namespace AuthAPI.Services
             if (result.Succeeded)
             {
                 await RecordLoginAudit(user, true, "Profile updated");
+
+                // Synchroniser avec ClientAPI si c'est un client
+                var roles = await _userManager.GetRolesAsync(user);
+                if (roles.Contains("Client"))
+                {
+                    var syncEnabled = _configuration.GetValue<bool>("ClientSync:Enabled", true);
+                    if (syncEnabled)
+                    {
+                        _ = Task.Run(async () => await UpdateClientProfileAsync(user));
+                    }
+                }
             }
 
             return result.Succeeded;
@@ -432,15 +494,11 @@ namespace AuthAPI.Services
             var user = await _userManager.FindByEmailAsync(model.Email);
             if (user == null || !user.IsActive)
             {
-                // Pour la sécurité, on ne révèle pas si l'utilisateur existe
                 return true;
             }
 
-            // Générer un token de réinitialisation
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
 
-            // En production, vous enverriez un email ici
-            // Pour le développement, on loggue le token
             _logger.LogInformation($"Reset password token for {user.Email}: {token}");
             await RecordLoginAudit(user, true, "Password reset requested");
 
@@ -540,6 +598,265 @@ namespace AuthAPI.Services
             return await _userManager.Users.CountAsync();
         }
 
+        // ========== SYNCHRONISATION AVEC CLIENTAPI (AMÉLIORÉE) ==========
+
+        private async Task EnsureClientProfileAsync(ApplicationUser user)
+        {
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            // Vérifier le circuit breaker
+            if (_syncFailures.TryGetValue(user.Email, out var lastFailure) &&
+                DateTime.UtcNow - lastFailure < _syncFailureCooldown)
+            {
+                _logger.LogDebug("Synchronisation ignorée pour {Email} (échec récent)", user.Email);
+                return;
+            }
+
+            try
+            {
+                var roles = await _userManager.GetRolesAsync(user);
+                if (!roles.Contains("Client"))
+                {
+                    _logger.LogDebug("Utilisateur {Email} n'a pas le rôle Client, synchronisation ignorée", user.Email);
+                    return;
+                }
+
+                var gatewayBaseUrl = _configuration["GatewayBaseUrl"];
+                if (string.IsNullOrWhiteSpace(gatewayBaseUrl))
+                {
+                    gatewayBaseUrl = "https://localhost:7076";
+                    _logger.LogDebug("GatewayBaseUrl non configuré, utilisation de {BaseUrl}", gatewayBaseUrl);
+                }
+
+                var clientApiBaseUrl = _configuration["ClientApiBaseUrl"];
+                if (string.IsNullOrWhiteSpace(clientApiBaseUrl))
+                {
+                    clientApiBaseUrl = "https://localhost:7025";
+                    _logger.LogDebug("ClientApiBaseUrl non configuré, utilisation de {BaseUrl}", clientApiBaseUrl);
+                }
+
+                var maxRetries = _configuration.GetValue<int>("ClientSync:MaxRetries", 3);
+                var timeoutSeconds = _configuration.GetValue<int>("ClientSync:TimeoutSeconds", 15);
+
+                var httpClient = _httpClientFactory.CreateClient();
+                httpClient.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+
+                var encodedEmail = Uri.EscapeDataString(user.Email ?? string.Empty);
+
+                // Configuration des endpoints selon la priorité Ocelot
+                var getEndpoints = new List<string>
+                {
+                    $"{gatewayBaseUrl}/apigateway/internal/clients/email/{encodedEmail}", // Priorité 0 (sans auth)
+                    $"{gatewayBaseUrl}/apigateway/clients/email/{encodedEmail}", // Priorité 1 (avec auth)
+                    $"{clientApiBaseUrl}/api/clients/email/{encodedEmail}" // Direct
+                };
+
+                bool clientExists = false;
+
+                foreach (var endpoint in getEndpoints)
+                {
+                    try
+                    {
+                        _logger.LogDebug("Vérification GET {Endpoint} pour {Email}", endpoint, user.Email);
+                        var getResponse = await httpClient.GetAsync(endpoint);
+
+                        if (getResponse.IsSuccessStatusCode)
+                        {
+                            _logger.LogInformation("✅ Profil client existant pour {Email}", user.Email);
+                            clientExists = true;
+                            break;
+                        }
+
+                        if (getResponse.StatusCode == HttpStatusCode.NotFound)
+                        {
+                            _logger.LogDebug("Client {Email} non trouvé à {Endpoint}", user.Email, endpoint);
+                            break; // Passe à la création
+                        }
+
+                        _logger.LogWarning("Statut inattendu pour {Email} à {Endpoint}: {Status}",
+                            user.Email, endpoint, getResponse.StatusCode);
+                    }
+                    catch (HttpRequestException ex)
+                    {
+                        _logger.LogDebug("Service non disponible: {Endpoint} - {Message}", endpoint, ex.Message);
+                        continue;
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        _logger.LogWarning("Timeout pour {Endpoint}", endpoint);
+                        continue;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug("Erreur lors de la vérification {Endpoint}: {Message}", endpoint, ex.Message);
+                        continue;
+                    }
+                }
+
+                // Si le client n'existe pas, le créer
+                if (!clientExists)
+                {
+                    var payload = new
+                    {
+                        Nom = $"{user.FirstName} {user.LastName}".Trim(),
+                        Email = user.Email,
+                        Telephone = user.PhoneNumber ?? string.Empty,
+                        Adresse = string.Empty
+                    };
+
+                    var createEndpoints = new List<string>
+                    {
+                        $"{gatewayBaseUrl}/apigateway/internal/clients", // Sans auth
+                        $"{gatewayBaseUrl}/apigateway/clients", // Avec auth
+                        $"{clientApiBaseUrl}/api/clients" // Direct
+                    };
+
+                    bool created = false;
+
+                    foreach (var endpoint in createEndpoints)
+                    {
+                        try
+                        {
+                            _logger.LogDebug("Tentative POST {Endpoint} pour {Email}", endpoint, user.Email);
+                            var createResponse = await httpClient.PostAsJsonAsync(endpoint, payload);
+
+                            if (createResponse.IsSuccessStatusCode)
+                            {
+                                _logger.LogInformation("✅ Profil client créé pour {Email} via {Endpoint}", user.Email, endpoint);
+                                created = true;
+                                break;
+                            }
+
+                            // Lire le contenu de l'erreur si possible
+                            string errorContent = "N/A";
+                            try
+                            {
+                                errorContent = await createResponse.Content.ReadAsStringAsync();
+                            }
+                            catch { }
+
+                            _logger.LogWarning("Échec création client {Email} via {Endpoint}: {Status} - {Error}",
+                                user.Email, endpoint, createResponse.StatusCode, errorContent);
+                        }
+                        catch (HttpRequestException ex)
+                        {
+                            _logger.LogDebug("Service non disponible: {Endpoint} - {Message}", endpoint, ex.Message);
+                        }
+                        catch (TaskCanceledException)
+                        {
+                            _logger.LogWarning("Timeout création client: {Endpoint}", endpoint);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogDebug("Erreur création client {Endpoint}: {Message}", endpoint, ex.Message);
+                        }
+                    }
+
+                    if (!created)
+                    {
+                        throw new Exception($"Échec de la création du profil client pour {user.Email}");
+                    }
+                }
+
+                // En cas de succès, nettoyer le cache d'échec
+                _syncFailures.TryRemove(user.Email, out _);
+            }
+            catch (Exception ex)
+            {
+                // Enregistrer l'échec dans le cache
+                _syncFailures[user.Email] = DateTime.UtcNow;
+                _logger.LogError(ex, "Erreur lors de la synchronisation du profil client pour {Email}", user.Email);
+            }
+            finally
+            {
+                stopwatch.Stop();
+                _logger.LogDebug("Synchronisation client pour {Email} terminée en {ElapsedMs}ms",
+                    user.Email, stopwatch.ElapsedMilliseconds);
+            }
+        }
+
+        private async Task UpdateClientProfileAsync(ApplicationUser user)
+        {
+            try
+            {
+                var gatewayBaseUrl = _configuration["GatewayBaseUrl"] ?? "https://localhost:7076";
+                var timeoutSeconds = _configuration.GetValue<int>("ClientSync:TimeoutSeconds", 15);
+
+                var httpClient = _httpClientFactory.CreateClient();
+                httpClient.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+
+                // Récupérer le client existant - d'abord via la route interne
+                var encodedEmail = Uri.EscapeDataString(user.Email ?? string.Empty);
+
+                // Essayer d'abord la route interne (sans auth)
+                var getResponse = await httpClient.GetAsync($"{gatewayBaseUrl}/apigateway/internal/clients/email/{encodedEmail}");
+
+                if (!getResponse.IsSuccessStatusCode)
+                {
+                    // Essayer la route normale (avec auth)
+                    getResponse = await httpClient.GetAsync($"{gatewayBaseUrl}/apigateway/clients/email/{encodedEmail}");
+                }
+
+                if (!getResponse.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("Client {Email} introuvable pour mise à jour", user.Email);
+                    return;
+                }
+
+                dynamic clientData;
+                try
+                {
+                    clientData = await getResponse.Content.ReadFromJsonAsync<dynamic>();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Erreur lors de la lecture des données client pour {Email}", user.Email);
+                    return;
+                }
+
+                var clientId = clientData?.id?.ToString() ?? clientData?.Id?.ToString();
+
+                if (string.IsNullOrEmpty(clientId))
+                {
+                    _logger.LogWarning("ID client non trouvé pour {Email}", user.Email);
+                    return;
+                }
+
+                // Mettre à jour le client - d'abord via la route interne
+                var payload = new
+                {
+                    Nom = $"{user.FirstName} {user.LastName}".Trim(),
+                    Email = user.Email,
+                    Telephone = user.PhoneNumber ?? string.Empty,
+                    Adresse = string.Empty
+                };
+
+                // Essayer la route interne d'abord
+                var updateResponse = await httpClient.PutAsJsonAsync($"{gatewayBaseUrl}/apigateway/internal/clients/{clientId}", payload);
+
+                if (!updateResponse.IsSuccessStatusCode)
+                {
+                    // Essayer la route normale
+                    updateResponse = await httpClient.PutAsJsonAsync($"{gatewayBaseUrl}/apigateway/clients/{clientId}", payload);
+                }
+
+                if (updateResponse.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("✅ Profil client mis à jour pour {Email}", user.Email);
+                }
+                else
+                {
+                    var errorContent = await updateResponse.Content.ReadAsStringAsync();
+                    _logger.LogWarning("Échec de mise à jour du profil client pour {Email}: {Status} - {Error}",
+                        user.Email, updateResponse.StatusCode, errorContent);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Erreur lors de la mise à jour du profil client pour {Email}", user.Email);
+            }
+        }
+
         // ========== MÉTHODES PRIVÉES ==========
 
         private async Task<bool> CheckLoginAttempts(string email)
@@ -556,14 +873,12 @@ namespace AuthAPI.Services
                 _context.UserLoginAttempts.Add(attempt);
             }
 
-            // Vérifier si le compte est verrouillé
             if (attempt.IsLockedOut)
             {
                 _logger.LogWarning($"Account {email} is locked until {attempt.LockoutEnd}");
                 return false;
             }
 
-            // Vérifier si on doit réinitialiser le compteur
             var resetMinutes = _configuration.GetValue<int>("Auth:ResetAttemptsAfterMinutes", 30);
             if (attempt.LastAttempt < DateTime.UtcNow.AddMinutes(-resetMinutes))
             {
@@ -593,7 +908,6 @@ namespace AuthAPI.Services
             attempt.FailedAttempts++;
             attempt.LastAttempt = DateTime.UtcNow;
 
-            // Verrouiller le compte si trop de tentatives
             if (attempt.FailedAttempts >= maxAttempts)
             {
                 attempt.LockoutEnd = DateTime.UtcNow.AddMinutes(lockoutMinutes);

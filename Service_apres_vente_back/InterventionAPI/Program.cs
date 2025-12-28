@@ -2,6 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using InterventionAPI.Data;
 using InterventionAPI.Models.Repositories;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,8 +26,48 @@ builder.Services.AddDbContext<InterventionAPIContext>(options =>
 // HttpClient pour communiquer avec les autres microservices
 builder.Services.AddHttpClient();
 
+// Expose HttpContext (Authorization) aux services/repositories
+builder.Services.AddHttpContextAccessor();
+
 // Injection des d�pendances
 builder.Services.AddScoped<IInterventionRepository, InterventionRepository>();
+
+// Authentication + Authorization (JWT)
+var jwtKey = builder.Configuration["JWT:Key"];
+var jwtIssuer = builder.Configuration["JWT:Issuer"];
+var jwtAudience = builder.Configuration["JWT:Audience"];
+
+if (!string.IsNullOrEmpty(jwtKey))
+{
+    builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.RequireHttpsMetadata = false;
+        options.SaveToken = true;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            ValidateIssuer = !string.IsNullOrEmpty(jwtIssuer),
+            ValidateAudience = !string.IsNullOrEmpty(jwtAudience),
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+}
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("Admin", policy => policy.RequireRole("Admin"));
+    options.AddPolicy("ResponsableSAV", policy => policy.RequireRole("ResponsableSAV", "Admin"));
+    options.AddPolicy("Technicien", policy => policy.RequireRole("Technicien", "Admin", "ResponsableSAV"));
+});
 
 // Configuration CORS pour front (credentials)
 var frontendOrigins = builder.Configuration.GetSection("Cors:Frontends").Get<string[]>()
@@ -52,6 +95,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors("Frontend");
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 

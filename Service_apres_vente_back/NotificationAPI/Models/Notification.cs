@@ -11,5 +11,6 @@ namespace NotificationAPI.Models
         public string Message { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public string Status { get; set; } = "queued"; // queued, sent, failed
+        public bool Read { get; set; } = false;
     }
 }

@@ -15,6 +15,10 @@ import { Intervention } from '../../types/intervention';
 import { Client } from '../../types/client';
 import { clientService } from '../../services/clientService';
 import { reclamationService } from '../../services/reclamationService';
+import { interventionService } from '../../services/interventionService';
+import { technicienService } from '../../services/technicienService';
+import { Technicien } from '../../types/technicien';
+import { getUsers } from '../../services/userService';
 
 // Animations
 const fadeIn = keyframes`
@@ -144,9 +148,11 @@ interface Props {
   intervention?: Intervention | null;
   onClose: () => void;
   onSave: (c: Partial<Intervention>) => void;
+  isAdmin?: boolean;
+  currentUser?: { email?: string; id?: string | number; roles?: string[] } | null;
 }
 
-const InterventionForm: React.FC<Props> = ({ open, intervention, onClose, onSave }) => {
+const InterventionForm: React.FC<Props> = ({ open, intervention, onClose, onSave, isAdmin, currentUser }) => {
   const [form, setForm] = useState<Partial<Intervention>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [clients, setClients] = useState<Client[]>([]);
@@ -156,6 +162,9 @@ const InterventionForm: React.FC<Props> = ({ open, intervention, onClose, onSave
   const [loading, setLoading] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [selectedReclamation, setSelectedReclamation] = useState<any>(null);
+  const [techniciens, setTechniciens] = useState<Technicien[]>([]);
+  const [selectedTechnicienId, setSelectedTechnicienId] = useState<string>('');
+  const [isClientReadOnly, setIsClientReadOnly] = useState<boolean>(false);
 
   useEffect(() => {
     if (open) {
@@ -166,6 +175,7 @@ const InterventionForm: React.FC<Props> = ({ open, intervention, onClose, onSave
             ? new Date(intervention.dateIntervention).toISOString().slice(0, 16)
             : new Date().toISOString().slice(0, 16)
         });
+        setSelectedTechnicienId(String(intervention.technicienId ?? ''));
       } else {
         setForm({
           technicienId: undefined as any,
@@ -177,26 +187,146 @@ const InterventionForm: React.FC<Props> = ({ open, intervention, onClose, onSave
           coutMainOeuvre: 0,
           coutTotal: 0
         });
+        setSelectedTechnicienId('');
       }
       setErrors({});
-      setClientId('');
+      const defaultClientId = !intervention && !isAdmin && currentUser?.id ? String(currentUser.id) : '';
+      setClientId(defaultClientId);
+      setIsClientReadOnly(!!intervention || !isAdmin);
       setSelectedClient(null);
       setSelectedReclamation(null);
       loadClients();
+      loadTechniciens();
       
       // Si on édite, charger les données associées
       if (intervention?.reclamationId) {
         loadReclamationDetails(intervention.reclamationId);
       }
     }
-  }, [intervention, open]);
+  }, [intervention, open, isAdmin, currentUser]);
 
   const loadClients = async () => {
     try {
-      const data = await clientService.getAll();
-      setClients(Array.isArray(data) ? data : []);
+      const baseClients = await clientService.getAll();
+      let merged: Client[] = Array.isArray(baseClients) ? baseClients : [];
+
+      if (isAdmin) {
+        try {
+          const users = await getUsers();
+          const clientUsers = users.filter((u) => u.roles?.some((r) => r.toLowerCase() === 'client'));
+          const existingEmails = new Set((merged || []).map((c) => (c.email || '').toLowerCase()));
+          let syntheticIndex = 1;
+          clientUsers.forEach((u) => {
+            if (u.email && !existingEmails.has(u.email.toLowerCase())) {
+              merged.push({
+                id: -syntheticIndex++,
+                nom: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.userName || u.email,
+                email: u.email,
+                telephone: u.phoneNumber || undefined,
+                dateInscription: u.lastLoginAt ?? undefined,
+                nombreReclamations: 0,
+                reclamationsEnCours: 0,
+                isAuthUser: true,
+                userId: u.id,
+              });
+            }
+          });
+        } catch (e) {
+          console.warn('Impossible de fusionner les users côté formulaire intervention', e);
+        }
+      }
+
+      if (!isAdmin && currentUser) {
+        const lowerEmail = currentUser.email?.toLowerCase();
+        const matchesCurrentUser = (c: Client) => {
+          const emailMatch = lowerEmail && (c.email || '').toLowerCase() === lowerEmail;
+          const idMatch = currentUser.id !== undefined && String(c.id) === String(currentUser.id);
+          return emailMatch || idMatch;
+        };
+
+        const hasClient = merged.some(matchesCurrentUser);
+        if (!hasClient && lowerEmail) {
+          merged.push({
+            id: currentUser.id ? Number(currentUser.id) : -9999,
+            nom: currentUser.email || 'Client',
+            email: currentUser.email,
+            telephone: undefined,
+            dateInscription: undefined,
+            nombreReclamations: 0,
+            reclamationsEnCours: 0,
+            isAuthUser: true,
+            userId: currentUser.id,
+          });
+        }
+
+        merged = merged.filter(matchesCurrentUser);
+      }
+
+      setClients(merged);
     } catch {
       setClients([]);
+    }
+  };
+
+  const loadTechniciens = async () => {
+    try {
+      const data = await technicienService.getDisponibles();
+      let list: Technicien[] = Array.isArray(data) ? data : [];
+
+      try {
+        const users = await getUsers();
+        const techUsers = users.filter((u) => u.roles?.some((r) => r.toLowerCase() === 'technicien' || r === '7' || r.toLowerCase() === 'technician'));
+        const existingEmails = new Set((list || []).map((t) => (t.email || '').toLowerCase()));
+        let syntheticIndex = 1;
+        techUsers.forEach((u) => {
+          if (u.email && !existingEmails.has(u.email.toLowerCase())) {
+            list.push({
+              id: -syntheticIndex++,
+              nom: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.userName || u.email,
+              email: u.email,
+              telephone: u.phoneNumber || undefined,
+              disponibilite: 'Disponible',
+              isActif: true,
+              userId: u.id,
+            } as Technicien);
+          }
+        });
+      } catch (e) {
+        console.warn('Fusion des techniciens utilisateurs impossible', e);
+      }
+
+      setTechniciens(list);
+    } catch {
+      try {
+        const data = await technicienService.getAll();
+        let list: Technicien[] = Array.isArray(data) ? data : [];
+
+        try {
+          const users = await getUsers();
+          const techUsers = users.filter((u) => u.roles?.some((r) => r.toLowerCase() === 'technicien' || r === '7' || r.toLowerCase() === 'technician'));
+          const existingEmails = new Set((list || []).map((t) => (t.email || '').toLowerCase()));
+          let syntheticIndex = 1;
+          techUsers.forEach((u) => {
+            if (u.email && !existingEmails.has(u.email.toLowerCase())) {
+              list.push({
+                id: -syntheticIndex++,
+                nom: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.userName || u.email,
+                email: u.email,
+                telephone: u.phoneNumber || undefined,
+                disponibilite: 'Disponible',
+                isActif: true,
+                userId: u.id,
+              } as Technicien);
+            }
+          });
+        } catch (e) {
+          console.warn('Fusion des techniciens utilisateurs impossible', e);
+        }
+
+        setTechniciens(list);
+      } catch {
+        setTechniciens([]);
+      }
     }
   };
 
@@ -234,10 +364,6 @@ const InterventionForm: React.FC<Props> = ({ open, intervention, onClose, onSave
       try {
         const recs = await reclamationService.getByClient(Number(clientId));
         setReclamations(Array.isArray(recs) ? recs : []);
-        
-        // Charger les informations du client sélectionné
-        const client = clients.find(c => String(c.id) === clientId);
-        setSelectedClient(client || null);
       } catch {
         setReclamations([]);
       } finally {
@@ -245,7 +371,18 @@ const InterventionForm: React.FC<Props> = ({ open, intervention, onClose, onSave
       }
     };
     loadReclamations();
-  }, [clientId]);
+  }, [clientId, intervention]);
+
+  useEffect(() => {
+    if (!clientId) {
+      setSelectedClient(null);
+      setIsClientReadOnly(!isAdmin || !!intervention);
+      return;
+    }
+    const client = clients.find((c) => String(c.id) === String(clientId)) || null;
+    setSelectedClient(client);
+    setIsClientReadOnly(!isAdmin || !!intervention);
+  }, [clients, clientId, isAdmin, intervention]);
 
   const handleChange = (k: keyof Intervention, v: any) => {
     if (k === 'reclamationId') {
@@ -261,6 +398,9 @@ const InterventionForm: React.FC<Props> = ({ open, intervention, onClose, onSave
     } else if (k === 'technicienId' || k === 'coutPieces' || k === 'coutMainOeuvre') {
       const numValue = v === '' ? undefined : Number(v);
       setForm(s => ({ ...s, [k]: numValue }));
+      if (k === 'technicienId') {
+        setSelectedTechnicienId(v === '' ? '' : String(numValue));
+      }
     } else if (k === 'dateIntervention') {
       setForm(s => ({ ...s, [k]: new Date(v).toISOString() }));
     } else if (k === 'estGratuite') {
@@ -279,11 +419,29 @@ const InterventionForm: React.FC<Props> = ({ open, intervention, onClose, onSave
     }
   };
 
+  const handleTechnicienSelect = (value: string) => {
+    setSelectedTechnicienId(value);
+    if (!value || value === 'custom') {
+      setForm((prev) => ({ ...prev, technicienId: undefined as any, technicienNom: '' }));
+      return;
+    }
+    const tech = techniciens.find((t) => String(t.id) === value);
+    setForm((prev) => ({
+      ...prev,
+      technicienId: tech?.id ?? Number(value),
+      technicienNom: tech?.nom ?? prev.technicienNom,
+    }));
+  };
+
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
     
     if (!form.reclamationId) {
       newErrors.reclamationId = 'La réclamation est requise';
+    }
+
+    if (!clientId) {
+      newErrors.clientId = 'Le client est requis';
     }
     
     if (!form.technicienId) {
@@ -315,15 +473,79 @@ const InterventionForm: React.FC<Props> = ({ open, intervention, onClose, onSave
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = () => {
-    if (validate()) {
-      // Calculer le coût total
-      const coutTotal = form.estGratuite 
-        ? 0 
-        : (form.coutPieces || 0) + (form.coutMainOeuvre || 0);
-      
-      onSave({ ...form, coutTotal });
+  const handleSubmit = async () => {
+    if (!validate()) return;
+
+    // S'assurer qu'un technicien synthétique (depuis Auth) est créé côté API
+    let ensuredTechnicienId = form.technicienId;
+    if (ensuredTechnicienId && ensuredTechnicienId < 0) {
+      const selectedTech = techniciens.find((t) => Number(t.id) === Number(ensuredTechnicienId));
+      if (selectedTech) {
+        try {
+          const created = await technicienService.create({
+            nom: selectedTech.nom,
+            email: selectedTech.email,
+            telephone: selectedTech.telephone,
+            userId: selectedTech.userId,
+            disponibilite: selectedTech.disponibilite || 'Disponible',
+            isActif: true,
+          });
+          ensuredTechnicienId = created?.id ?? ensuredTechnicienId;
+        } catch (e) {
+          setErrors((prev) => ({ ...prev, technicienId: 'Impossible de créer ce technicien' }));
+          return;
+        }
+      }
     }
+
+    // S'assurer qu'un client synthétique (utilisateur Auth) existe côté API
+    let ensuredClientId = clientId ? Number(clientId) : undefined;
+    if (ensuredClientId && ensuredClientId < 0) {
+      const selectedCli = clients.find((c) => Number(c.id) === Number(ensuredClientId));
+      if (selectedCli?.isAuthUser) {
+        try {
+          const email = selectedCli.email || `client-${selectedCli.userId || 'auth'}@placeholder.local`;
+          let ensured = null as any;
+          try {
+            ensured = await clientService.create({
+              nom: selectedCli.nom || email,
+              email,
+              telephone: selectedCli.telephone,
+              adresse: selectedCli.adresse,
+            } as any);
+          } catch (createErr) {
+            ensured = await clientService.getByEmail(email).catch(() => null as any);
+          }
+          ensuredClientId = ensured?.id ?? ensuredClientId;
+        } catch (e) {
+          setErrors((prev) => ({ ...prev, clientId: 'Impossible de créer ce client' }));
+          return;
+        }
+      }
+    }
+
+    // Calculer le coût total et préparer un payload conforme à l'API
+    const coutTotal = form.estGratuite 
+      ? 0 
+      : (form.coutPieces || 0) + (form.coutMainOeuvre || 0);
+
+    const payload: Partial<Intervention> = {
+      reclamationId: form.reclamationId ? Number(form.reclamationId) : undefined,
+      technicienId: ensuredTechnicienId,
+      technicienNom: (form.technicienNom || '').trim(),
+      dateIntervention: form.dateIntervention || new Date().toISOString(),
+      statut: form.statut || 'Planifiée',
+      description: form.description || '',
+      observations: form.observations || '',
+      solutionApportee: form.solutionApportee || '',
+      coutPieces: form.coutPieces ?? 0,
+      coutMainOeuvre: form.coutMainOeuvre ?? 0,
+      coutTotal,
+      estGratuite: !!form.estGratuite,
+      dateFin: form.dateFin || null,
+    };
+
+    onSave(payload);
   };
 
   const statutOptions = [
@@ -469,7 +691,7 @@ const InterventionForm: React.FC<Props> = ({ open, intervention, onClose, onSave
               onChange={e => setClientId(e.target.value)}
               onFocus={() => setFocusedField('clientId')}
               onBlur={() => setFocusedField(null)}
-              disabled={!!intervention}
+              disabled={!!intervention || isClientReadOnly}
               error={!!errors.clientId}
               helperText={errors.clientId}
               InputProps={{
@@ -565,6 +787,27 @@ const InterventionForm: React.FC<Props> = ({ open, intervention, onClose, onSave
             <Person sx={{ fontSize: 20 }} />
             Informations du Technicien
           </SectionTitle>
+
+          <Grid item xs={12}>
+            <StyledTextField
+              fullWidth
+              select
+              label="Technicien"
+              value={selectedTechnicienId}
+              onChange={(e) => handleTechnicienSelect(e.target.value)}
+              helperText={techniciens.length === 0 ? 'Aucun technicien trouvé, saisissez manuellement' : 'Sélectionnez un technicien pour préremplir'}
+            >
+              <MenuItem value="">
+                <Typography color="text.secondary">Choisir un technicien</Typography>
+              </MenuItem>
+              {techniciens.map((tech) => (
+                <MenuItem key={tech.id} value={String(tech.id)}>
+                  #{tech.id} - {tech.nom}
+                </MenuItem>
+              ))}
+              <MenuItem value="custom">Autre (saisie libre)</MenuItem>
+            </StyledTextField>
+          </Grid>
 
           <Grid item xs={12} sm={6}>
             <StyledTextField

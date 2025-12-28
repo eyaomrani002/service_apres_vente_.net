@@ -12,6 +12,7 @@ namespace InterventionAPI.Data
 
         public DbSet<Intervention> Interventions { get; set; }
         public DbSet<Facture> Factures { get; set; }
+        public DbSet<Technicien> Techniciens { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -157,6 +158,29 @@ namespace InterventionAPI.Data
                         ModePaiement = "Virement",
                         DescriptionServices = "Réparation robinet thermostatique - Remplacement joint"
                     }
+                );
+            });
+
+            modelBuilder.Entity<Technicien>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Nom).IsRequired().HasMaxLength(120);
+                entity.Property(e => e.Email).HasMaxLength(120);
+                entity.Property(e => e.Telephone).HasMaxLength(30);
+                entity.Property(e => e.Zone).HasMaxLength(120);
+                entity.Property(e => e.Disponibilite).HasMaxLength(50).HasDefaultValue("Disponible");
+                entity.Property(e => e.Competences).HasMaxLength(200);
+                entity.Property(e => e.UserId).HasMaxLength(120);
+                entity.Property(e => e.DateCreation).HasDefaultValueSql("GETUTCDATE()");
+                entity.Property(e => e.DateMaj).HasDefaultValueSql("GETUTCDATE()");
+
+                entity.HasIndex(e => e.UserId).IsUnique(false);
+                entity.HasIndex(e => e.Email).IsUnique(false);
+                entity.HasIndex(e => e.Disponibilite);
+
+                entity.HasData(
+                    new Technicien { Id = 101, Nom = "Jean Dupont", Email = "jean.dupont@example.com", Telephone = "0102030405", Zone = "Nord", Disponibilite = "Disponible", IsActif = true },
+                    new Technicien { Id = 102, Nom = "Marie Martin", Email = "marie.martin@example.com", Telephone = "0607080910", Zone = "Sud", Disponibilite = "Disponible", IsActif = true }
                 );
             });
         }

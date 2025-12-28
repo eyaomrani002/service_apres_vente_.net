@@ -89,6 +89,22 @@ namespace NotificationAPI.Controllers
             }
         }
 
+        [HttpPost("{id:guid}/read")]
+        public ActionResult<Notification> MarkRead(Guid id)
+        {
+            try
+            {
+                var updated = _repository.MarkRead(id);
+                if (updated == null) return NotFound();
+                return Ok(updated);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Erreur lors de POST /api/notifications/{id}/read");
+                return StatusCode(500, "Erreur serveur");
+            }
+        }
+
         [HttpPut("{id:guid}")]
         public IActionResult Update(Guid id, Notification notification)
         {

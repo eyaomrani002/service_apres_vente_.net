@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
   Box,
   Drawer,
@@ -45,21 +45,22 @@ import { useTheme } from '../../contexts/ThemeContext';
 import NotificationsMenu from '../notifications/NotificationsMenu';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useCart } from '../../contexts/CartContext';
+import AuthContext from '../../contexts/AuthContext';
 
 const drawerWidth = 240;
 
 const menuItems = [
-  { text: 'Tableau de bord', icon: <Dashboard />, path: '/dashboard' },
+  { text: 'Tableau de bord', icon: <Dashboard />, path: '/dashboard', roles: ['admin'] },
   { text: 'Catalogue', icon: <Inventory />, path: '/catalog' },
-  { text: 'Articles', icon: <Inventory />, path: '/articles' },
-  { text: 'Clients', icon: <People />, path: '/clients' },
-  { text: 'Utilisateurs', icon: <Group />, path: '/users' },
+  { text: 'Articles', icon: <Inventory />, path: '/articles', roles: ['admin'] },
+  { text: 'Clients', icon: <People />, path: '/clients', roles: ['admin'] },
+  { text: 'Utilisateurs', icon: <Group />, path: '/users', roles: ['admin'] },
   { text: 'Réclamations', icon: <Assignment />, path: '/reclamations' },
-  { text: 'Interventions', icon: <Build />, path: '/interventions' },
-  { text: 'Factures', icon: <ReceiptLong />, path: '/factures' },
-  { text: 'Calendrier', icon: <CalendarMonth />, path: '/calendar' },
-  { text: 'Rapports', icon: <Assessment />, path: '/reports' },
-  { text: 'Paramètres', icon: <Settings />, path: '/settings' },
+  { text: 'Interventions', icon: <Build />, path: '/interventions', roles: ['admin'] },
+  { text: 'Factures', icon: <ReceiptLong />, path: '/factures', roles: ['admin'] },
+  { text: 'Calendrier', icon: <CalendarMonth />, path: '/calendar', roles: ['admin'] },
+  { text: 'Rapports', icon: <Assessment />, path: '/reports', roles: ['admin'] },
+  { text: 'Paramètres', icon: <Settings />, path: '/settings', roles: ['admin'] },
 ];
 
 const MainLayout: React.FC = () => {
@@ -72,6 +73,7 @@ const MainLayout: React.FC = () => {
   const location = useLocation();
   const { dark, shadow, toggleDark, toggleShadow } = useTheme();
   const { items: cartItems, total: cartTotal, count: cartCount, removeItem } = useCart();
+  const auth = useContext(AuthContext);
 
   useEffect(() => {
     try {
@@ -335,7 +337,9 @@ const MainLayout: React.FC = () => {
         <Toolbar />
         <Box sx={{ overflow: 'auto' }}>
           <List>
-            {menuItems.map((item) => (
+            {menuItems
+              .filter((item) => !item.roles || auth.hasAnyRole(item.roles))
+              .map((item) => (
               <ListItem key={item.text} disablePadding sx={{ display: 'block' }}>
                 <ListItemButton
                   selected={location.pathname === item.path}

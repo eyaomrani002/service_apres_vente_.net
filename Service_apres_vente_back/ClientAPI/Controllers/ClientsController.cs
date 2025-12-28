@@ -90,23 +90,23 @@ namespace ClientAPI.Controllers
             }
         }
 
-        // GET: api/clients/email/john@example.com
-        [HttpGet("email/{email}")]
-        public ActionResult<Client> GetClientByEmail(string email)
-        {
-            try
-            {
-                var client = _clientRepository.GetClientByEmail(email);
-                if (client == null)
-                    return NotFound($"Client avec email {email} non trouvé");
-                return Ok(client);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Erreur lors de GET /api/clients/email/{email}");
-                return StatusCode(500, "Erreur serveur");
-            }
-        }
+// GET: api/clients/email/john@example.com
+[HttpGet("email/{email}")]
+public ActionResult<Client> GetClientByEmail(string email)
+{
+    try
+    {
+        var client = _clientRepository.GetClientByEmail(email);
+        if (client == null)
+            return NotFound($"Client avec email {email} non trouvé");
+        return Ok(client);
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, $"Erreur lors de GET /api/clients/email/{email}");
+        return StatusCode(500, "Erreur serveur");
+    }
+}
 
         // POST: api/clients
         [HttpPost]

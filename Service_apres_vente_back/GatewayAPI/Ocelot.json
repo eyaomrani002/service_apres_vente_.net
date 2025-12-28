@@ -258,6 +258,22 @@
       },
     },
     {
+      "DownstreamPathTemplate": "/api/auth/removerole",
+      "DownstreamScheme": "https",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 7011
+        }
+      ],
+      "UpstreamPathTemplate": "/apigateway/auth/removerole",
+      "UpstreamHttpMethod": [ "POST" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+    },
+    {
       "DownstreamPathTemplate": "/api/auth/createrole",
       "DownstreamScheme": "https",
       "DownstreamHostAndPorts": [
@@ -373,6 +389,32 @@
     },
 
     // ========== CLIENTS ==========
+    {
+      "DownstreamPathTemplate": "/api/clients/email/{email}",
+      "DownstreamScheme": "https",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 7025
+        }
+      ],
+      "UpstreamPathTemplate": "/apigateway/internal/clients/email/{email}",
+      "UpstreamHttpMethod": [ "GET" ],
+      "Priority": 0
+    },
+    {
+      "DownstreamPathTemplate": "/api/clients",
+      "DownstreamScheme": "https",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 7025
+        }
+      ],
+      "UpstreamPathTemplate": "/apigateway/internal/clients",
+      "UpstreamHttpMethod": [ "POST" ],
+      "Priority": 0
+    },
     {
       "DownstreamPathTemplate": "/api/clients",
       "DownstreamScheme": "https",
@@ -651,6 +693,73 @@
     }
     ,
 
+    // ========== TECHNICIENS ========== 
+    {
+      "DownstreamPathTemplate": "/api/techniciens",
+      "DownstreamScheme": "https",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 7228
+        }
+      ],
+      "UpstreamPathTemplate": "/apigateway/techniciens",
+      "UpstreamHttpMethod": [ "GET", "POST" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      }
+    },
+    {
+      "DownstreamPathTemplate": "/api/techniciens/{id}",
+      "DownstreamScheme": "https",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 7228
+        }
+      ],
+      "UpstreamPathTemplate": "/apigateway/techniciens/{id}",
+      "UpstreamHttpMethod": [ "GET", "PUT", "DELETE" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      }
+    },
+    {
+      "DownstreamPathTemplate": "/api/techniciens/disponibles",
+      "DownstreamScheme": "https",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 7228
+        }
+      ],
+      "UpstreamPathTemplate": "/apigateway/techniciens/disponibles",
+      "UpstreamHttpMethod": [ "GET" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      }
+    },
+    {
+      "DownstreamPathTemplate": "/api/techniciens/{id}/disponibilite",
+      "DownstreamScheme": "https",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 7228
+        }
+      ],
+      "UpstreamPathTemplate": "/apigateway/techniciens/{id}/disponibilite",
+      "UpstreamHttpMethod": [ "PUT" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      }
+    }
+    ,
+
     // ========== CALENDAR ==========
     {
       "DownstreamPathTemplate": "/api/calendar/appointments",
@@ -678,7 +787,7 @@
         }
       ],
       "UpstreamPathTemplate": "/apigateway/calendar/appointments/{id}",
-      "UpstreamHttpMethod": [ "GET", "DELETE" ],
+      "UpstreamHttpMethod": [ "GET", "PUT", "DELETE" ],
       "AuthenticationOptions": {
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
@@ -696,11 +805,7 @@
         }
       ],
       "UpstreamPathTemplate": "/apigateway/notifications",
-      "UpstreamHttpMethod": [ "GET", "POST" ],
-      "AuthenticationOptions": {
-        "AuthenticationProviderKey": "Bearer",
-        "AllowedScopes": []
-      }
+      "UpstreamHttpMethod": [ "GET", "POST" ]
     },
     {
       "DownstreamPathTemplate": "/api/notifications/{id}",
@@ -712,11 +817,7 @@
         }
       ],
       "UpstreamPathTemplate": "/apigateway/notifications/{id}",
-      "UpstreamHttpMethod": [ "GET", "PUT", "DELETE" ],
-      "AuthenticationOptions": {
-        "AuthenticationProviderKey": "Bearer",
-        "AllowedScopes": []
-      }
+      "UpstreamHttpMethod": [ "GET", "PUT", "DELETE" ]
     },
     {
       "DownstreamPathTemplate": "/api/notifications/search/recipient/{recipient}",
@@ -728,11 +829,7 @@
         }
       ],
       "UpstreamPathTemplate": "/apigateway/notifications/search/recipient/{recipient}",
-      "UpstreamHttpMethod": [ "GET" ],
-      "AuthenticationOptions": {
-        "AuthenticationProviderKey": "Bearer",
-        "AllowedScopes": []
-      }
+      "UpstreamHttpMethod": [ "GET" ]
     },
 
     // ========== REPORTING ==========
@@ -779,6 +876,23 @@
       ],
       "UpstreamPathTemplate": "/apigateway/reports/client/{clientId}",
       "UpstreamHttpMethod": [ "GET" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      }
+    },
+    {
+      "DownstreamPathTemplate": "/api/clients/email/{email}",
+      "DownstreamScheme": "https",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 7025
+        }
+      ],
+      "UpstreamPathTemplate": "/apigateway/clients/email/{email}",
+      "UpstreamHttpMethod": [ "GET" ],
+      "Priority": 1,
       "AuthenticationOptions": {
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []

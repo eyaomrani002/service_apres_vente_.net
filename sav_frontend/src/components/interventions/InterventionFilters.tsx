@@ -11,6 +11,7 @@ import {
 import { clientService } from '../../services/clientService';
 import { reclamationService } from '../../services/reclamationService';
 import { Client } from '../../types/client';
+import { getUsers } from '../../services/userService';
 
 // Animations
 const fadeIn = keyframes`
@@ -103,9 +104,10 @@ interface Props {
     estGratuite?: boolean;
     mode?: 'gratuite' | 'payante' | 'sans-facture';
   }) => void;
+  isAdmin?: boolean;
 }
 
-const InterventionFilters: React.FC<Props> = ({ onSearch }) => {
+const InterventionFilters: React.FC<Props> = ({ onSearch, isAdmin }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [technicienId, setTechnicienId] = useState('');
   const [statut, setStatut] = useState('');
@@ -120,18 +122,46 @@ const InterventionFilters: React.FC<Props> = ({ onSearch }) => {
   const [reclamations, setReclamations] = useState<any[]>([]);
 
   useEffect(() => {
+    if (!isAdmin) return;
     const loadClients = async () => {
       try {
-        const data = await clientService.getAll();
-        setClients(Array.isArray(data) ? data : []);
+        const baseClients = await clientService.getAll();
+        let merged: Client[] = Array.isArray(baseClients) ? baseClients : [];
+
+        try {
+          const users = await getUsers();
+          const clientUsers = users.filter((u) => u.roles?.some((r) => r.toLowerCase() === 'client'));
+          const existingEmails = new Set((merged || []).map((c) => (c.email || '').toLowerCase()));
+          let syntheticIndex = 1;
+          clientUsers.forEach((u) => {
+            if (u.email && !existingEmails.has(u.email.toLowerCase())) {
+              merged.push({
+                id: -syntheticIndex++,
+                nom: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.userName || u.email,
+                email: u.email,
+                telephone: u.phoneNumber || undefined,
+                dateInscription: u.lastLoginAt ?? undefined,
+                nombreReclamations: 0,
+                reclamationsEnCours: 0,
+                isAuthUser: true,
+                userId: u.id,
+              });
+            }
+          });
+        } catch (e) {
+          console.warn('Impossible de fusionner les users côté filtres interventions', e);
+        }
+
+        setClients(merged);
       } catch {
         setClients([]);
       }
     };
     loadClients();
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
+    if (!isAdmin) return;
     const loadReclamations = async () => {
       if (!clientId) {
         setReclamations([]);
@@ -146,14 +176,14 @@ const InterventionFilters: React.FC<Props> = ({ onSearch }) => {
       }
     };
     loadReclamations();
-  }, [clientId]);
+  }, [clientId, isAdmin]);
 
   const activeFiltersCount = [
     searchTerm,
     technicienId,
     statut,
-    clientId,
-    reclamationId,
+    isAdmin ? clientId : '',
+    isAdmin ? reclamationId : '',
     dateDebut,
     dateFin,
     coutMin,
@@ -167,8 +197,8 @@ const InterventionFilters: React.FC<Props> = ({ onSearch }) => {
       searchTerm: searchTerm || undefined, 
       technicienId: technicienId ? Number(technicienId) : undefined,
       statut: statut || undefined,
-      clientId: clientId ? Number(clientId) : undefined,
-      reclamationId: reclamationId ? Number(reclamationId) : undefined,
+      clientId: isAdmin && clientId ? Number(clientId) : undefined,
+      reclamationId: isAdmin && reclamationId ? Number(reclamationId) : undefined,
       dateDebut: dateDebut || undefined,
       dateFin: dateFin || undefined,
       coutMin: coutMin ? Number(coutMin) : undefined,
@@ -271,46 +301,49 @@ const InterventionFilters: React.FC<Props> = ({ onSearch }) => {
           </StyledTextField>
         </Grid>
 
-        {/* Client */}
-        <Grid item xs={12} sm={6} md={2}>
-          <StyledTextField
-            fullWidth
-            select
-            value={clientId}
-            onChange={e => setClientId(e.target.value)}
-            label="Client"
-          >
-            <MenuItem value="">Tous les clients</MenuItem>
-            {clients.map(client => (
-              <MenuItem key={client.id} value={String(client.id)}>
-                {client.nom}
-              </MenuItem>
-            ))}
-          </StyledTextField>
-        </Grid>
+        {/* Client / Réclamation (admin uniquement) */}
+        {isAdmin && (
+          <>
+            <Grid item xs={12} sm={6} md={2}>
+              <StyledTextField
+                fullWidth
+                select
+                value={clientId}
+                onChange={e => setClientId(e.target.value)}
+                label="Client"
+              >
+                <MenuItem value="">Tous les clients</MenuItem>
+                {clients.map(client => (
+                  <MenuItem key={client.id} value={String(client.id)}>
+                    {client.nom}
+                  </MenuItem>
+                ))}
+              </StyledTextField>
+            </Grid>
 
-        {/* Réclamation */}
-        <Grid item xs={12} sm={6} md={2}>
-          <StyledTextField
-            fullWidth
-            select
-            value={reclamationId}
-            onChange={e => setReclamationId(e.target.value)}
-            label="Réclamation"
-            disabled={!clientId}
-          >
-            <MenuItem value="">Toutes les réclamations</MenuItem>
-            {reclamations.map(reclamation => {
-              const id = reclamation.id ?? reclamation.Id;
-              const sujet = reclamation.sujet ?? reclamation.Sujet;
-              return (
-                <MenuItem key={id} value={String(id)}>
-                  {sujet || `Réclamation #${id}`}
-                </MenuItem>
-              );
-            })}
-          </StyledTextField>
-        </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <StyledTextField
+                fullWidth
+                select
+                value={reclamationId}
+                onChange={e => setReclamationId(e.target.value)}
+                label="Réclamation"
+                disabled={!clientId}
+              >
+                <MenuItem value="">Toutes les réclamations</MenuItem>
+                {reclamations.map(reclamation => {
+                  const id = reclamation.id ?? reclamation.Id;
+                  const sujet = reclamation.sujet ?? reclamation.Sujet;
+                  return (
+                    <MenuItem key={id} value={String(id)}>
+                      {sujet || `Réclamation #${id}`}
+                    </MenuItem>
+                  );
+                })}
+              </StyledTextField>
+            </Grid>
+          </>
+        )}
 
         {/* Dates */}
         <Grid item xs={12} sm={6} md={2}>

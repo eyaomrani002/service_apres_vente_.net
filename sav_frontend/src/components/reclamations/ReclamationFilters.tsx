@@ -10,6 +10,7 @@ import {
 } from '@mui/icons-material';
 import { clientService } from '../../services/clientService';
 import { Client } from '../../types/client';
+import { getUsers } from '../../services/userService';
 
 // Animations
 const fadeIn = keyframes`
@@ -90,26 +91,57 @@ const ActiveFilterChip = styled(Chip)(({ theme }) => ({
 
 interface Props {
   onSearch: (q: { searchTerm?: string; clientId?: number; statut?: string }) => void;
+  disableClientFilter?: boolean;
+  isAdmin?: boolean;
 }
 
-const ReclamationFilters: React.FC<Props> = ({ onSearch }) => {
+const ReclamationFilters: React.FC<Props> = ({ onSearch, disableClientFilter, isAdmin }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [clientId, setClientId] = useState<string>('');
   const [statut, setStatut] = useState('');
   const [clients, setClients] = useState<Client[]>([]);
 
   useEffect(() => {
+    if (disableClientFilter) return;
     let ignore = false;
     (async () => {
       try {
-        const data = await clientService.getAll();
-        if (!ignore) setClients(Array.isArray(data) ? data : []);
+        const baseClients = await clientService.getAll();
+        let merged: Client[] = Array.isArray(baseClients) ? baseClients : [];
+
+        if (isAdmin) {
+          try {
+            const users = await getUsers();
+            const clientUsers = users.filter((u) => u.roles?.some((r) => r.toLowerCase() === 'client'));
+            const existingEmails = new Set((merged || []).map((c) => (c.email || '').toLowerCase()));
+            let syntheticIndex = 1;
+            clientUsers.forEach((u) => {
+              if (u.email && !existingEmails.has(u.email.toLowerCase())) {
+                merged.push({
+                  id: -syntheticIndex++,
+                  nom: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.userName || u.email,
+                  email: u.email,
+                  telephone: u.phoneNumber || undefined,
+                  dateInscription: u.lastLoginAt ?? undefined,
+                  nombreReclamations: 0,
+                  reclamationsEnCours: 0,
+                  isAuthUser: true,
+                  userId: u.id,
+                });
+              }
+            });
+          } catch (e) {
+            console.warn('Impossible de charger les users pour fusion (filtres réclamations)', e);
+          }
+        }
+
+        if (!ignore) setClients(merged);
       } catch {
         if (!ignore) setClients([]);
       }
     })();
     return () => { ignore = true; };
-  }, []);
+  }, [disableClientFilter, isAdmin]);
 
   const activeFiltersCount = [
     searchTerm,
@@ -170,30 +202,32 @@ const ReclamationFilters: React.FC<Props> = ({ onSearch }) => {
           />
         </Grid>
 
-        {/* Filtre Client */}
-        <Grid item xs={12} sm={6} md={3}>
-          <StyledTextField
-            select
-            fullWidth
-            label="Client"
-            value={clientId}
-            onChange={e => setClientId(e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Person sx={{ color: '#00BCD4' }} />
-                </InputAdornment>
-              ),
-            }}
-          >
-            <MenuItem value="">Tous les clients</MenuItem>
-            {clients.map(c => (
-              <MenuItem key={c.id} value={String(c.id)}>
-                {c.nom}{c.email ? ` — ${c.email}` : ''}
-              </MenuItem>
-            ))}
-          </StyledTextField>
-        </Grid>
+        {/* Filtre Client (admin uniquement) */}
+        {!disableClientFilter && (
+          <Grid item xs={12} sm={6} md={3}>
+            <StyledTextField
+              select
+              fullWidth
+              label="Client"
+              value={clientId}
+              onChange={e => setClientId(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Person sx={{ color: '#00BCD4' }} />
+                  </InputAdornment>
+                ),
+              }}
+            >
+              <MenuItem value="">Tous les clients</MenuItem>
+              {clients.map(c => (
+                <MenuItem key={c.id} value={String(c.id)}>
+                  {c.nom}{c.email ? ` — ${c.email}` : ''}
+                </MenuItem>
+              ))}
+            </StyledTextField>
+          </Grid>
+        )}
 
         {/* Filtre Statut */}
         <Grid item xs={12} sm={6} md={3}>

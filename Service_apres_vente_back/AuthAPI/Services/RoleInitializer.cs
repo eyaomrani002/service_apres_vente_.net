@@ -20,6 +20,7 @@ namespace AuthAPI.Services
                 // Rôles SPÉCIFIQUES pour votre application SAV
                 string[] roleNames = {
                     "Client",           // Rôle pour les clients
+                    "Technicien",       // Rôle pour les techniciens
                     "ResponsableSAV",   // Rôle pour les responsables SAV
                     "Admin"             // Rôle admin
                 };
@@ -71,6 +72,18 @@ namespace AuthAPI.Services
                     "System",
                     "Admin@123",
                     "Admin",
+                    logger
+                );
+
+                // Créer un technicien de base (démo)
+                await CreateUserIfNotExists(
+                    userManager,
+                    "tech",
+                    "technicien@sav.com",
+                    "Tech",
+                    "One",
+                    "Tech@123",
+                    "Technicien",
                     logger
                 );
 

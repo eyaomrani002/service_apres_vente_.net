@@ -25,6 +25,8 @@ import {
   CheckCircle,
 } from '@mui/icons-material';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import { authService } from '../../services/authService';
+import type { RegisterData } from '../../types/auth';
 
 // Animations
 const fadeIn = keyframes`
@@ -154,6 +156,9 @@ const RegisterForm: React.FC = () => {
   });
   
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiSuccess, setApiSuccess] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -220,18 +225,41 @@ const RegisterForm: React.FC = () => {
     setActiveStep(prev => prev - 1);
   };
 
-  const handleSubmit = () => {
-    console.log('Registration data:', formData);
-    setTimeout(() => {
-      localStorage.setItem('token', 'simulated_token');
-      localStorage.setItem('user', JSON.stringify({
-        id: 1,
-        email: formData.email,
-        name: `${formData.firstName} ${formData.lastName}`,
-        role: 'client',
-      }));
-      navigate('/dashboard');
-    }, 1000);
+  const handleSubmit = async () => {
+    try {
+      setApiError(null);
+      setApiSuccess(null);
+      setSubmitting(true);
+
+      const payload: RegisterData = {
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        email: formData.email.trim(),
+        username: formData.email.trim().split('@')[0] || formData.email.trim(),
+        password: formData.password,
+        confirmPassword: formData.confirmPassword,
+        phoneNumber: formData.phone || undefined,
+        acceptTerms: formData.acceptTerms,
+      };
+
+      const response = await authService.register(payload);
+
+      setApiSuccess('Compte créé avec succès. Vous pouvez vous connecter.');
+
+      // Stockage optionnel des infos utilisateur
+      if (response?.token) {
+        localStorage.setItem('accessToken', response.token);
+        if (response.refreshToken) {
+          localStorage.setItem('refreshToken', response.refreshToken);
+        }
+      }
+
+      navigate('/login');
+    } catch (error: any) {
+      setApiError(error?.message || 'Échec de l’inscription.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const renderStepContent = () => {
@@ -573,6 +601,17 @@ const RegisterForm: React.FC = () => {
           </Step>
         ))}
       </StyledStepper>
+
+      {apiError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {apiError}
+        </Alert>
+      )}
+      {apiSuccess && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          {apiSuccess}
+        </Alert>
+      )}
       
       <Box sx={{ width: '100%', mb: 4 }}>{renderStepContent()}</Box>
       
@@ -588,8 +627,9 @@ const RegisterForm: React.FC = () => {
         <GradientButton
           onClick={handleNext}
           endIcon={activeStep === steps.length - 1 ? <CheckCircle /> : <ArrowForward />}
+          disabled={submitting}
         >
-          {activeStep === steps.length - 1 ? 'S\'inscrire' : 'Suivant'}
+          {submitting ? 'En cours...' : activeStep === steps.length - 1 ? 'S\'inscrire' : 'Suivant'}
         </GradientButton>
       </Box>
       

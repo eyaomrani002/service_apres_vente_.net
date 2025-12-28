@@ -21,7 +21,8 @@ namespace NotificationAPI.Migrations
                     Subject = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
                     Message = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false)
+                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    Read = table.Column<bool>(type: "bit", nullable: false, defaultValue: false)
                 },
                 constraints: table =>
                 {

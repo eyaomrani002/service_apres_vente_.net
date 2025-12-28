@@ -1,8 +1,9 @@
 // InterventionsPage.tsx - Version corrigée avec "Voir les détails"
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Box, Snackbar, Alert, CircularProgress, Grid, Card, CardContent, 
-  Typography, Avatar, Button, Paper 
+  Typography, Avatar, Button, Paper, Stack, TextField, MenuItem
 } from '@mui/material';
 import { styled, keyframes } from '@mui/material/styles';
 import { Add, Assignment, TrendingUp, AttachMoney, Schedule } from '@mui/icons-material';
@@ -13,6 +14,7 @@ import InterventionForm from '../../components/interventions/InterventionForm';
 import InterventionDetailsDialog from '../../components/interventions/InterventionDetailsDialog'; // IMPORTANT
 import { Intervention } from '../../types/intervention';
 import { interventionService } from '../../services/interventionService';
+import AuthContext from '../../contexts/AuthContext';
 
 // Animations
 const fadeIn = keyframes`
@@ -66,6 +68,7 @@ const GradientButton = styled(Button)(({ theme }) => ({
 }));
 
 const InterventionsPage: React.FC = () => {
+  const navigate = useNavigate();
   const [items, setItems] = useState<Intervention[]>([]);
   const [loading, setLoading] = useState(false);
   const [openForm, setOpenForm] = useState(false);
@@ -74,12 +77,20 @@ const InterventionsPage: React.FC = () => {
   const [message, setMessage] = useState<string | null>(null);
   const [messageType, setMessageType] = useState<'success' | 'error' | 'info'>('info');
   const [stats, setStats] = useState<any>(null);
+  const [, setLoadingAction] = useState(false);
+  const [quickTechnicienId, setQuickTechnicienId] = useState('');
+  const [quickStatut, setQuickStatut] = useState('');
+  const [quickSearchTerm, setQuickSearchTerm] = useState('');
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [currentClientId, setCurrentClientId] = useState<number | null>(null);
+  const { user } = React.useContext(AuthContext);
 
   type SearchPayload = {
     searchTerm?: string;
     technicienId?: number;
     statut?: string;
     reclamationId?: number;
+    clientId?: number;
     dateDebut?: string;
     dateFin?: string;
     estGratuite?: boolean;
@@ -92,10 +103,21 @@ const InterventionsPage: React.FC = () => {
   const load = async () => {
     setLoading(true);
     try {
+      if (!isAdmin && currentClientId) {
+        try {
+          const scoped = await interventionService.advancedSearch({ clientId: currentClientId } as any);
+          setItems(Array.isArray(scoped) ? scoped : []);
+          setStats(null);
+          return;
+        } catch (e) {
+          console.warn('Filtrage des interventions pour le client connecté indisponible', e);
+        }
+      }
+
       const data = await interventionService.getAll();
       setItems(Array.isArray(data) ? data : []);
       try { 
-        const s = await interventionService.getStats(); 
+        const s = isAdmin ? await interventionService.getStats() : null; 
         setStats(s); 
       } catch {}
     } catch (e: any) {
@@ -106,8 +128,26 @@ const InterventionsPage: React.FC = () => {
   };
 
   useEffect(() => { 
+    if (user) {
+      const roles = (user.roles || user.role || []).map((r: string) => (r.toLowerCase ? r.toLowerCase() : r));
+      setIsAdmin(Array.isArray(roles) ? roles.includes('admin') : roles === 'admin');
+      if (user.id) setCurrentClientId(Number(user.id));
+      return;
+    }
+    try {
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.id) setCurrentClientId(Number(parsed.id));
+        const roles = (parsed?.roles || parsed?.role || []).map((r: string) => (r.toLowerCase ? r.toLowerCase() : r));
+        setIsAdmin(Array.isArray(roles) ? roles.includes('admin') : roles === 'admin');
+      }
+    } catch {}
+  }, [user]);
+
+  useEffect(() => { 
     load(); 
-  }, []);
+  }, [isAdmin, currentClientId]);
 
   // Fonction pour afficher les messages
   const showMessage = (msg: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -119,6 +159,8 @@ const InterventionsPage: React.FC = () => {
   const handleSearch = async (q: SearchPayload) => {
     setLoading(true);
     try {
+      const effectiveQuery = (!isAdmin && currentClientId) ? { ...q, clientId: currentClientId } : q;
+
       if (q.mode === 'sans-facture') {
         const data = await interventionService.sansFacture();
         setItems(Array.isArray(data) ? data : []);
@@ -132,16 +174,17 @@ const InterventionsPage: React.FC = () => {
         const data = await interventionService.byReclamation(q.reclamationId);
         setItems(Array.isArray(data) ? data : []);
       } else if (
-        q.technicienId ||
-        q.statut ||
-        q.searchTerm ||
-        q.dateDebut ||
-        q.dateFin ||
-        q.estGratuite !== undefined ||
-        q.coutMin !== undefined ||
-        q.coutMax !== undefined
+        effectiveQuery.technicienId ||
+        effectiveQuery.statut ||
+        effectiveQuery.searchTerm ||
+        effectiveQuery.dateDebut ||
+        effectiveQuery.dateFin ||
+        effectiveQuery.estGratuite !== undefined ||
+        effectiveQuery.coutMin !== undefined ||
+        effectiveQuery.coutMax !== undefined ||
+        effectiveQuery.clientId !== undefined
       ) {
-        const data = await interventionService.advancedSearch(q);
+        const data = await interventionService.advancedSearch(effectiveQuery as any);
         setItems(Array.isArray(data) ? data : []);
       } else {
         const data = await interventionService.getAll();
@@ -166,9 +209,16 @@ const InterventionsPage: React.FC = () => {
   };
 
   // CORRECTION : Fonction pour gérer "Voir les détails"
-  const handleView = (intervention: Intervention) => { 
-    console.log('Voir détails pour intervention:', intervention.id); // Debug
-    setSelectedIntervention(intervention); 
+  const handleView = async (intervention: Intervention) => { 
+    try {
+      setLoadingAction(true);
+      const fresh = await interventionService.getById(intervention.id);
+      setSelectedIntervention(fresh);
+    } catch (e: any) {
+      showMessage(e.message || 'Impossible de charger le détail', 'error');
+    } finally {
+      setLoadingAction(false);
+    }
   };
 
   const handleDelete = async (id: number) => { 
@@ -184,17 +234,106 @@ const InterventionsPage: React.FC = () => {
 
   const handleSave = async (payload: Partial<Intervention>) => {
     try {
+      setLoadingAction(true);
+      const body = { ...payload };
+      if (!isAdmin && currentClientId) {
+        body.clientId = currentClientId;
+      }
+
       if (editing) {
-        await interventionService.update(editing.id, payload);
+        await interventionService.update(editing.id, body);
         showMessage('Intervention modifiée avec succès', 'success');
       } else {
-        await interventionService.create(payload);
+        await interventionService.create(body);
         showMessage('Intervention créée avec succès', 'success');
       }
       setOpenForm(false); 
       load();
     } catch (e: any) { 
       showMessage(e.message || 'Erreur de sauvegarde', 'error'); 
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const handleChangeStatus = async (id: number, statut: string) => {
+    try {
+      setLoadingAction(true);
+      await interventionService.changeStatus(id, statut);
+      showMessage('Statut mis à jour', 'success');
+      load();
+    } catch (e: any) {
+      showMessage(e.message || 'Erreur de changement de statut', 'error');
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const handleGenerateInvoice = async (id: number) => {
+    navigate('/factures', { state: { interventionId: id } });
+  };
+
+  const loadEnRetard = async () => {
+    try {
+      setLoading(true);
+      const data = await interventionService.enRetard();
+      setItems(Array.isArray(data) ? data : []);
+      showMessage('Interventions en retard', 'info');
+    } catch (e: any) {
+      showMessage(e.message || 'Erreur filtre en retard', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadByTechnicien = async () => {
+    if (!quickTechnicienId) {
+      showMessage('Saisir un ID technicien', 'error');
+      return;
+    }
+    try {
+      setLoading(true);
+      const data = await interventionService.byTechnicien(Number(quickTechnicienId));
+      setItems(Array.isArray(data) ? data : []);
+      showMessage(`Technicien ${quickTechnicienId}`, 'info');
+    } catch (e: any) {
+      showMessage(e.message || 'Erreur filtre technicien', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadByStatut = async () => {
+    if (!quickStatut) {
+      showMessage('Saisir un statut', 'error');
+      return;
+    }
+    try {
+      setLoading(true);
+      const data = await interventionService.byStatut(quickStatut);
+      setItems(Array.isArray(data) ? data : []);
+      showMessage(`Statut ${quickStatut}`, 'info');
+    } catch (e: any) {
+      showMessage(e.message || 'Erreur filtre statut', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const quickSearch = async () => {
+    if (!quickSearchTerm.trim()) {
+      showMessage('Saisir un terme', 'error');
+      return;
+    }
+    try {
+      setLoading(true);
+      const data = await interventionService.search(quickSearchTerm.trim());
+      setItems(Array.isArray(data) ? data : []);
+      showMessage('Recherche rapide effectuée', 'info');
+    } catch (e: any) {
+      showMessage(e.message || 'Erreur de recherche', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -333,7 +472,7 @@ const InterventionsPage: React.FC = () => {
           gap: 2 
         }}>
           <Box sx={{ flex: 1, minWidth: 280 }}>
-            <InterventionFilters onSearch={handleSearch} />
+            <InterventionFilters onSearch={handleSearch} isAdmin={isAdmin} />
           </Box>
           <GradientButton 
             startIcon={<Add />} 
@@ -342,6 +481,22 @@ const InterventionsPage: React.FC = () => {
             Nouvelle intervention
           </GradientButton>
         </Box>
+
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 3 }}>
+          <Button size="small" variant="contained" color="warning" onClick={loadEnRetard}>En retard</Button>
+          <TextField size="small" label="ID technicien" value={quickTechnicienId} onChange={(e) => setQuickTechnicienId(e.target.value)} />
+          <Button size="small" variant="outlined" onClick={loadByTechnicien}>Par technicien</Button>
+          <TextField size="small" select label="Statut" value={quickStatut} onChange={(e) => setQuickStatut(e.target.value)} sx={{ minWidth: 140 }}>
+            <MenuItem value="">Tous</MenuItem>
+            <MenuItem value="Planifiée">Planifiée</MenuItem>
+            <MenuItem value="En cours">En cours</MenuItem>
+            <MenuItem value="Terminée">Terminée</MenuItem>
+            <MenuItem value="Annulée">Annulée</MenuItem>
+          </TextField>
+          <Button size="small" variant="outlined" onClick={loadByStatut}>Par statut</Button>
+          <TextField size="small" label="Recherche rapide" value={quickSearchTerm} onChange={(e) => setQuickSearchTerm(e.target.value)} />
+          <Button size="small" variant="outlined" onClick={quickSearch}>Rechercher</Button>
+        </Stack>
 
         {/* Table ou Loading */}
         {loading ? (
@@ -358,7 +513,9 @@ const InterventionsPage: React.FC = () => {
             items={items} 
             onEdit={handleEdit} 
             onDelete={handleDelete} 
-            onView={handleView} // CORRECTION : Passer la fonction onView
+            onView={handleView} 
+            onChangeStatus={handleChangeStatus}
+            onGenerateInvoice={handleGenerateInvoice}
           />
         )}
       </ModernPaper>
@@ -369,6 +526,8 @@ const InterventionsPage: React.FC = () => {
         intervention={editing} 
         onClose={() => setOpenForm(false)} 
         onSave={handleSave} 
+        isAdmin={isAdmin}
+        currentUser={user as any}
       />
 
       {/* Dialog de détails - CORRECTION : Ajouté */}

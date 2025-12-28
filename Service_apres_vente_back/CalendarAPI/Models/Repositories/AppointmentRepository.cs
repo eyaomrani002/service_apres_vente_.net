@@ -42,9 +42,25 @@ namespace CalendarAPI.Models.Repositories
                 .ToList();
         }
 
+        public IList<Appointment> GetByDate(DateTime dateUtc)
+        {
+            var start = dateUtc.Date;
+            var end = start.AddDays(1);
+            return _context.Appointments
+                .Where(a => a.StartUtc < end && a.EndUtc > start)
+                .OrderBy(a => a.StartUtc)
+                .ToList();
+        }
+
         public bool Overlaps(Guid technicianId, DateTime startUtc, DateTime endUtc)
         {
+            return Overlaps(technicianId, startUtc, endUtc, null);
+        }
+
+        public bool Overlaps(Guid technicianId, DateTime startUtc, DateTime endUtc, Guid? excludeAppointmentId = null)
+        {
             return _context.Appointments.Any(a => a.TechnicianId == technicianId &&
+                (excludeAppointmentId == null || a.Id != excludeAppointmentId.Value) &&
                 !(endUtc <= a.StartUtc || startUtc >= a.EndUtc));
         }
 
@@ -54,10 +70,14 @@ namespace CalendarAPI.Models.Repositories
             if (existing != null)
             {
                 existing.TechnicianId = appointment.TechnicianId;
+                existing.ClientId = appointment.ClientId;
+                existing.TicketId = appointment.TicketId;
+                existing.ReclamationId = appointment.ReclamationId;
                 existing.StartUtc = appointment.StartUtc;
                 existing.EndUtc = appointment.EndUtc;
                 existing.Title = appointment.Title;
                 existing.Notes = appointment.Notes;
+                existing.Status = appointment.Status;
                 _context.SaveChanges();
             }
             return existing;

@@ -6,7 +6,7 @@ import {
   TablePagination, TableSortLabel
 } from '@mui/material';
 import { styled, keyframes } from '@mui/material/styles';
-import { Edit, Delete, Visibility, CalendarToday, Person, Build, Paid, Assignment } from '@mui/icons-material';
+import { Edit, Delete, Visibility, CalendarToday, Person, Build, Paid, Assignment, CheckCircle, ReceiptLong, Schedule } from '@mui/icons-material';
 import { Intervention } from '../../types/intervention';
 
 // Animations
@@ -154,9 +154,11 @@ interface Props {
   onEdit: (i: Intervention) => void;
   onDelete: (id: number) => void;
   onView?: (i: Intervention) => void;
+  onChangeStatus?: (id: number, statut: string) => void;
+  onGenerateInvoice?: (id: number) => void;
 }
 
-const InterventionsTable: React.FC<Props> = ({ items, onEdit, onDelete, onView }) => {
+const InterventionsTable: React.FC<Props> = ({ items, onEdit, onDelete, onView, onChangeStatus, onGenerateInvoice }) => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [orderBy, setOrderBy] = useState<keyof Intervention>('dateIntervention');
@@ -469,6 +471,27 @@ const InterventionsTable: React.FC<Props> = ({ items, onEdit, onDelete, onView }
                           <Visibility fontSize="small" />
                         </ActionButton>
                       </Tooltip>
+                      {onChangeStatus && intervention.statut !== 'En cours' && (
+                        <Tooltip title="Passer en cours" arrow>
+                          <ActionButton size="small" className="edit" onClick={() => onChangeStatus(intervention.id, 'En cours')}>
+                            <Schedule fontSize="small" />
+                          </ActionButton>
+                        </Tooltip>
+                      )}
+                      {onChangeStatus && intervention.statut !== 'Terminée' && (
+                        <Tooltip title="Marquer terminée" arrow>
+                          <ActionButton size="small" className="edit" onClick={() => onChangeStatus(intervention.id, 'Terminée')}>
+                            <CheckCircle fontSize="small" color="success" />
+                          </ActionButton>
+                        </Tooltip>
+                      )}
+                      {onGenerateInvoice && (
+                        <Tooltip title="Générer facture" arrow>
+                          <ActionButton size="small" className="view" onClick={() => onGenerateInvoice(intervention.id)}>
+                            <ReceiptLong fontSize="small" />
+                          </ActionButton>
+                        </Tooltip>
+                      )}
                       <Tooltip title="Modifier" arrow>
                         <ActionButton 
                           size="small" 

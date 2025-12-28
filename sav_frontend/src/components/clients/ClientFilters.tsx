@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { 
   Box, TextField, Grid, Button, FormControlLabel, 
-  Checkbox, InputAdornment, Chip, IconButton, Collapse
+  Checkbox, InputAdornment, Chip, IconButton, Collapse, Typography
 } from '@mui/material';
 import { styled, keyframes } from '@mui/material/styles';
 import { 

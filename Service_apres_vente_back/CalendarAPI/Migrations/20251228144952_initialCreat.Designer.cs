@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CalendarAPI.Migrations
 {
     [DbContext(typeof(CalendarAPIContext))]
-    [Migration("20251217171544_initial")]
-    partial class initial
+    [Migration("20251228144952_initialCreat")]
+    partial class initialCreat
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -31,6 +31,9 @@ namespace CalendarAPI.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("ClientId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -41,10 +44,23 @@ namespace CalendarAPI.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
+                    b.Property<Guid?>("ReclamationId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("StartUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("Planned");
+
                     b.Property<Guid>("TechnicianId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("TicketId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Title")

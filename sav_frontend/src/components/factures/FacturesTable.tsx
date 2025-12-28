@@ -16,7 +16,7 @@ import {
   Box,
 } from '@mui/material';
 import { styled, keyframes } from '@mui/material/styles';
-import { Visibility, CheckCircle, AttachMoney } from '@mui/icons-material';
+import { Visibility, CheckCircle, Edit, Delete } from '@mui/icons-material';
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(10px); }
@@ -43,9 +43,11 @@ interface Props {
   factures: Facture[];
   onView: (facture: Facture) => void;
   onMarkPaid: (facture: Facture) => void;
+  onEdit?: (facture: Facture) => void;
+  onDelete?: (facture: Facture) => void;
 }
 
-const FacturesTable: React.FC<Props> = ({ factures, onView, onMarkPaid }) => {
+const FacturesTable: React.FC<Props> = ({ factures, onView, onMarkPaid, onEdit, onDelete }) => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
@@ -125,10 +127,24 @@ const FacturesTable: React.FC<Props> = ({ factures, onView, onMarkPaid }) => {
                           <Visibility fontSize="small" />
                         </IconButton>
                       </Tooltip>
+                      {onEdit && (
+                        <Tooltip title="Modifier">
+                          <IconButton size="small" onClick={() => onEdit(facture)}>
+                            <Edit fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                       {!isPaid && (
                         <Tooltip title="Marquer comme payée">
                           <IconButton size="small" onClick={() => onMarkPaid(facture)}>
                             <CheckCircle fontSize="small" color="success" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      {onDelete && (
+                        <Tooltip title="Supprimer">
+                          <IconButton size="small" onClick={() => onDelete(facture)}>
+                            <Delete fontSize="small" color="error" />
                           </IconButton>
                         </Tooltip>
                       )}

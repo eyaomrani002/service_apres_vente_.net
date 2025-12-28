@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, Grid, CircularProgress, Snackbar, Alert, Button } from '@mui/material';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Box, Grid, CircularProgress, Snackbar, Alert, Button, TextField, Stack } from '@mui/material';
 import { styled, keyframes } from '@mui/material/styles';
 import { Add, ReceiptLong } from '@mui/icons-material';
 import PageTitle from '../../components/common/PageTitle';
@@ -40,14 +41,24 @@ const GradientButton = styled(Button)(({ theme }) => ({
 }));
 
 const FacturesPage: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [factures, setFactures] = useState<Facture[]>([]);
   const [loading, setLoading] = useState(true);
   const [openForm, setOpenForm] = useState(false);
   const [interventionsSansFacture, setInterventionsSansFacture] = useState<any[]>([]);
   const [selectedFacture, setSelectedFacture] = useState<Facture | null>(null);
+  const [editingFacture, setEditingFacture] = useState<Facture | null>(null);
+  const [prefillInterventionId, setPrefillInterventionId] = useState<number | undefined>(undefined);
   const [message, setMessage] = useState<string | null>(null);
   const [messageType, setMessageType] = useState<'success' | 'error' | 'info'>('info');
   const [filters, setFilters] = useState<FactureFilterParams>({});
+  const [quickStatut, setQuickStatut] = useState('');
+  const [quickNumero, setQuickNumero] = useState('');
+  const [quickSearchTerm, setQuickSearchTerm] = useState('');
+  const [quickDateDebut, setQuickDateDebut] = useState('');
+  const [quickDateFin, setQuickDateFin] = useState('');
+  const [, setLoadingAction] = useState(false);
 
   const loadFactures = async (query: FactureFilterParams = {}) => {
     setLoading(true);
@@ -65,9 +76,28 @@ const FacturesPage: React.FC = () => {
   const loadInterventions = async () => {
     try {
       const data = await interventionService.sansFacture();
-      setInterventionsSansFacture(data);
+      if (Array.isArray(data) && data.length > 0) {
+        setInterventionsSansFacture(data);
+        return;
+      }
+
+      // Fallback: si aucune intervention sans facture ou API vide, on charge toutes les interventions
+      try {
+        const all = await interventionService.getAll();
+        setInterventionsSansFacture(Array.isArray(all) ? all : []);
+      } catch (errAll) {
+        console.warn('Impossible de charger les interventions (fallback all)', errAll);
+        setInterventionsSansFacture([]);
+      }
     } catch (error) {
       console.warn('Impossible de charger les interventions sans facture', error);
+      try {
+        const all = await interventionService.getAll();
+        setInterventionsSansFacture(Array.isArray(all) ? all : []);
+      } catch (errAll) {
+        console.warn('Impossible de charger les interventions (fallback all)', errAll);
+        setInterventionsSansFacture([]);
+      }
     }
   };
 
@@ -76,27 +106,81 @@ const FacturesPage: React.FC = () => {
     loadInterventions();
   }, []);
 
+  useEffect(() => {
+    const state = (location.state || {}) as any;
+    if (state && state.interventionId) {
+      setPrefillInterventionId(Number(state.interventionId));
+      setOpenForm(true);
+      navigate(location.pathname, { replace: true });
+    }
+  }, [location.state, location.pathname, navigate]);
+
   const handleSearch = (payload: FactureFilterParams) => {
     setFilters(payload);
     loadFactures(payload);
   };
 
-  const handleCreate = async (payload: Partial<Facture>) => {
+  const handleSave = async (payload: Partial<Facture>, id?: number) => {
     try {
-      await factureService.create(payload);
-      setMessage('Facture créée avec succès');
+      setLoadingAction(true);
+      if (id) {
+        await factureService.update(id, payload);
+        setMessage('Facture mise à jour');
+      } else {
+        await factureService.create(payload);
+        setMessage('Facture créée avec succès');
+      }
       setMessageType('success');
       setOpenForm(false);
+      setEditingFacture(null);
+      setPrefillInterventionId(undefined);
       loadFactures(filters);
       loadInterventions();
     } catch (error: any) {
-      setMessage(error.message || 'Erreur lors de la création');
+      setMessage(error.message || 'Erreur lors de la sauvegarde');
       setMessageType('error');
+    } finally {
+      setLoadingAction(false);
     }
+  };
+
+  const handleDelete = async (facture: Facture) => {
+    if (!confirm(`Supprimer la facture ${facture.numeroFacture} ?`)) return;
+    try {
+      setLoadingAction(true);
+      await factureService.delete(facture.id);
+      setMessage('Facture supprimée');
+      setMessageType('success');
+      loadFactures(filters);
+    } catch (error: any) {
+      setMessage(error.message || 'Erreur lors de la suppression');
+      setMessageType('error');
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const handleView = async (facture: Facture) => {
+    try {
+      setLoadingAction(true);
+      const fresh = await factureService.getById(facture.id);
+      setSelectedFacture(fresh);
+    } catch (error: any) {
+      setMessage(error.message || 'Impossible de charger le détail');
+      setMessageType('error');
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const handleEdit = (facture: Facture) => {
+    setEditingFacture(facture);
+    setOpenForm(true);
   };
 
   const handleMarkPaid = async (facture: Facture) => {
     try {
+      setLoadingAction(true);
       await factureService.changeStatus(facture.id, 'Payée');
       setMessage('Statut mis à jour');
       setMessageType('success');
@@ -104,6 +188,104 @@ const FacturesPage: React.FC = () => {
     } catch (error: any) {
       setMessage(error.message || 'Impossible de mettre à jour');
       setMessageType('error');
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  // Quick filters
+  const loadImpayees = async () => {
+    try {
+      setLoading(true);
+      const data = await factureService.getImpayees();
+      setFactures(data);
+      setMessage('Filtre : impayées');
+      setMessageType('info');
+    } catch (error: any) {
+      setMessage(error.message || 'Impossible de charger les impayées');
+      setMessageType('error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadByPeriode = async () => {
+    if (!quickDateDebut || !quickDateFin) {
+      setMessage('Choisissez une période');
+      setMessageType('error');
+      return;
+    }
+    try {
+      setLoading(true);
+      const data = await factureService.getByPeriode(quickDateDebut, quickDateFin);
+      setFactures(data);
+      setMessage(`Période ${quickDateDebut} → ${quickDateFin}`);
+      setMessageType('info');
+    } catch (error: any) {
+      setMessage(error.message || 'Erreur période');
+      setMessageType('error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadByStatut = async () => {
+    if (!quickStatut) {
+      setMessage('Saisir un statut');
+      setMessageType('error');
+      return;
+    }
+    try {
+      setLoading(true);
+      const data = await factureService.getByStatut(quickStatut);
+      setFactures(data);
+      setMessage(`Statut ${quickStatut}`);
+      setMessageType('info');
+    } catch (error: any) {
+      setMessage(error.message || 'Erreur filtre statut');
+      setMessageType('error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const quickSearch = async () => {
+    if (!quickSearchTerm.trim()) {
+      setMessage('Saisir un terme de recherche');
+      setMessageType('error');
+      return;
+    }
+    try {
+      setLoading(true);
+      const data = await factureService.search(quickSearchTerm.trim());
+      setFactures(data);
+      setMessage('Recherche rapide effectuée');
+      setMessageType('info');
+    } catch (error: any) {
+      setMessage(error.message || 'Erreur de recherche');
+      setMessageType('error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const searchNumero = async () => {
+    if (!quickNumero.trim()) {
+      setMessage('Saisir un numéro de facture');
+      setMessageType('error');
+      return;
+    }
+    try {
+      setLoading(true);
+      const data = await factureService.getByNumero(quickNumero.trim());
+      setFactures(data ? [data] : []);
+      setMessage(`Facture ${quickNumero} chargée`);
+      setMessageType('info');
+    } catch (error: any) {
+      setMessage(error.message || 'Facture introuvable');
+      setMessageType('error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -140,25 +322,46 @@ const FacturesPage: React.FC = () => {
           <Box sx={{ flex: 1, minWidth: 260 }}>
             <FactureFilters onSearch={handleSearch} />
           </Box>
-          <GradientButton startIcon={<Add />} onClick={() => setOpenForm(true)}>
+          <GradientButton startIcon={<Add />} onClick={() => { setEditingFacture(null); setOpenForm(true); }}>
             Créer une facture
           </GradientButton>
         </Box>
+
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 3 }}>
+          <Button size="small" variant="contained" color="warning" onClick={loadImpayees}>Impayées</Button>
+          <TextField size="small" type="date" label="Début" InputLabelProps={{ shrink: true }} value={quickDateDebut} onChange={(e) => setQuickDateDebut(e.target.value)} />
+          <TextField size="small" type="date" label="Fin" InputLabelProps={{ shrink: true }} value={quickDateFin} onChange={(e) => setQuickDateFin(e.target.value)} />
+          <Button size="small" variant="outlined" onClick={loadByPeriode}>Par période</Button>
+          <TextField size="small" label="Statut" value={quickStatut} onChange={(e) => setQuickStatut(e.target.value)} />
+          <Button size="small" variant="outlined" onClick={loadByStatut}>Par statut</Button>
+          <TextField size="small" label="N° facture" value={quickNumero} onChange={(e) => setQuickNumero(e.target.value)} />
+          <Button size="small" variant="outlined" onClick={searchNumero}>Par numéro</Button>
+          <TextField size="small" label="Recherche rapide" value={quickSearchTerm} onChange={(e) => setQuickSearchTerm(e.target.value)} />
+          <Button size="small" variant="outlined" onClick={quickSearch}>Rechercher</Button>
+        </Stack>
 
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
             <CircularProgress size={48} sx={{ color: '#2196F3' }} />
           </Box>
         ) : (
-          <FacturesTable factures={factures} onView={(f) => setSelectedFacture(f)} onMarkPaid={handleMarkPaid} />
+          <FacturesTable 
+            factures={factures} 
+            onView={handleView} 
+            onMarkPaid={handleMarkPaid}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+          />
         )}
       </Panel>
 
       <FactureForm
         open={openForm}
         interventions={interventionsSansFacture}
-        onClose={() => setOpenForm(false)}
-        onSave={handleCreate}
+        facture={editingFacture}
+        prefillInterventionId={prefillInterventionId}
+        onClose={() => { setOpenForm(false); setPrefillInterventionId(undefined); }}
+        onSave={handleSave}
       />
 
       <FactureDetailsDialog

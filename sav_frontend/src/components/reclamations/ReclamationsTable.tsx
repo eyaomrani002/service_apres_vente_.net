@@ -1,5 +1,5 @@
-// ReclamationsTable.tsx - Version modernisée
-import React, { useState } from 'react';
+// ReclamationsTable.tsx - Version complète avec gestion des permissions
+import React, { useState, useContext } from 'react';
 import { 
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, 
   Paper, IconButton, Tooltip, Chip, Box, Typography,
@@ -11,6 +11,7 @@ import {
   PriorityHigh, TrendingUp, Schedule, CheckCircle
 } from '@mui/icons-material';
 import { Reclamation } from '../../types/reclamation';
+import AuthContext from '../../contexts/AuthContext';
 
 // Animations
 const fadeIn = keyframes`
@@ -85,18 +86,42 @@ const IDAvatar = styled(Avatar)(({ theme }) => ({
   background: 'linear-gradient(135deg, #2196F3 0%, #00BCD4 100%)',
 }));
 
+const ClientAvatar = styled(Avatar)(({ theme }) => ({
+  width: 32,
+  height: 32,
+  fontSize: '12px',
+  fontWeight: 600,
+  background: 'linear-gradient(135deg, #4CAF50 0%, #66BB6A 100%)',
+}));
+
 interface Props {
   items: Reclamation[];
   onEdit: (r: Reclamation) => void;
   onDelete: (id: number) => void;
   onView?: (r: Reclamation) => void;
+  canEditDelete?: boolean;
+  currentUserId?: number | null;
+  showClientInfo?: boolean;
 }
 
-const ReclamationsTable: React.FC<Props> = ({ items, onEdit, onDelete, onView }) => {
+const ReclamationsTable: React.FC<Props> = ({ 
+  items, 
+  onEdit, 
+  onDelete, 
+  onView, 
+  canEditDelete = true,
+  currentUserId = null,
+  showClientInfo = true
+}) => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [orderBy, setOrderBy] = useState<keyof Reclamation>('dateCreation');
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Utiliser AuthContext pour déterminer le rôle
+  const auth = useContext(AuthContext);
+  const isAdmin = auth.hasRole('admin');
+  const currentUser = auth.user;
 
   const handleSort = (property: keyof Reclamation) => {
     const isAsc = orderBy === property && order === 'asc';
@@ -104,7 +129,17 @@ const ReclamationsTable: React.FC<Props> = ({ items, onEdit, onDelete, onView })
     setOrderBy(property);
   };
 
-  const sortedItems = [...items].sort((a, b) => {
+  // Filtrer les items si nécessaire (pour les utilisateurs normaux)
+  const filteredItems = items.filter(item => {
+    if (isAdmin) return true; // admin voit tout
+
+    const userId = currentUserId || (currentUser?.id ? Number(currentUser.id) : null);
+    if (!userId) return false; // sans user connu, rien afficher
+
+    return item.clientId === userId;
+  });
+
+  const sortedItems = [...filteredItems].sort((a, b) => {
     const aValue = a[orderBy];
     const bValue = b[orderBy];
     if (aValue === undefined || aValue === null) return 1;
@@ -114,6 +149,12 @@ const ReclamationsTable: React.FC<Props> = ({ items, onEdit, onDelete, onView })
       return order === 'asc' 
         ? aValue.localeCompare(bValue)
         : bValue.localeCompare(aValue);
+    }
+    
+    if (aValue instanceof Date && bValue instanceof Date) {
+      return order === 'asc' 
+        ? aValue.getTime() - bValue.getTime()
+        : bValue.getTime() - aValue.getTime();
     }
     
     return order === 'asc' 
@@ -150,8 +191,55 @@ const ReclamationsTable: React.FC<Props> = ({ items, onEdit, onDelete, onView })
       'en_cours': 'En cours',
       'nouvelle': 'Nouvelle',
       'en attente': 'En attente',
+      'résolu': 'Résolu',
+      'résolue': 'Résolue',
     };
     return statusMap[statut?.toLowerCase() || ''] || statut || '-';
+  };
+
+  const getPriorityIcon = (priorite?: string) => {
+    switch(priorite?.toLowerCase()) {
+      case 'haute': case 'urgente': return '🔴';
+      case 'moyenne': return '🟡';
+      case 'basse': case 'faible': return '🟢';
+      default: return '⚪';
+    }
+  };
+
+  const canUserEditDelete = (item: Reclamation) => {
+    // Si admin, peut tout faire
+    if (isAdmin) return true;
+    
+    // Si utilisateur normal, vérifier si c'est sa réclamation
+    const userId = currentUserId || (currentUser?.id ? Number(currentUser.id) : null);
+    if (userId && item.clientId === userId) {
+      return true;
+    }
+    
+    return false;
+  };
+
+  // Fonction pour obtenir les initiales du client
+  const getClientInitials = (clientId?: number) => {
+    if (!clientId) return '??';
+    return `C${clientId}`;
+  };
+
+  // Fonction pour afficher le nom du client
+  const getClientDisplay = (item: Reclamation) => {
+    if (!showClientInfo) return 'Mon compte';
+    
+    if (isAdmin) {
+      return `Client #${item.clientId ?? '-'}`;
+    } else {
+      // Pour l'utilisateur normal, vérifier si c'est sa réclamation
+      const userId = currentUserId || (currentUser?.id ? Number(currentUser.id) : null);
+      if (userId && item.clientId === userId) {
+        return 'Mon compte';
+      } else {
+        return `Client #${item.clientId ?? '-'}`;
+      }
+    }
   };
 
   return (
@@ -170,7 +258,7 @@ const ReclamationsTable: React.FC<Props> = ({ items, onEdit, onDelete, onView })
                   Réclamation
                 </TableSortLabel>
               </TableCell>
-              <TableCell>Client</TableCell>
+              {showClientInfo && <TableCell>Client</TableCell>}
               <TableCell align="center">Priorité</TableCell>
               <TableCell align="center">Statut</TableCell>
               <TableCell>
@@ -188,10 +276,15 @@ const ReclamationsTable: React.FC<Props> = ({ items, onEdit, onDelete, onView })
           <TableBody>
             {paginatedItems.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 8 }}>
+                <TableCell colSpan={showClientInfo ? 7 : 6} align="center" sx={{ py: 8 }}>
                   <Typography variant="body1" color="text.secondary">
-                    Aucune réclamation trouvée
+                    {isAdmin ? 'Aucune réclamation trouvée' : 'Vous n\'avez aucune réclamation'}
                   </Typography>
+                  {!isAdmin && currentUser && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                      Cliquez sur "Nouvelle Réclamation" pour en créer une
+                    </Typography>
+                  )}
                 </TableCell>
               </TableRow>
             ) : (
@@ -227,37 +320,49 @@ const ReclamationsTable: React.FC<Props> = ({ items, onEdit, onDelete, onView })
                     </Box>
                   </TableCell>
 
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Person sx={{ fontSize: 18, color: '#9E9E9E' }} />
-                      <Typography variant="body2" sx={{ color: '#666' }}>
-                        Client #{item.clientId ?? '-'}
-                      </Typography>
-                    </Box>
-                  </TableCell>
+                  {showClientInfo && (
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {isAdmin ? (
+                          <ClientAvatar>
+                            {getClientInitials(item.clientId)}
+                          </ClientAvatar>
+                        ) : (
+                          <Person sx={{ fontSize: 18, color: '#9E9E9E' }} />
+                        )}
+                        <Typography variant="body2" sx={{ color: '#666' }}>
+                          {getClientDisplay(item)}
+                        </Typography>
+                      </Box>
+                    </TableCell>
+                  )}
 
                   <TableCell align="center">
-                    <Chip 
-                      label={item.priorite || 'Moyenne'}
-                      size="small"
-                      icon={<PriorityHigh sx={{ fontSize: '16px !important' }} />}
+                    <Chip
+                      label={item.priorite ? `${getPriorityIcon(item.priorite)} ${item.priorite}` : 'N/A'}
                       sx={{
-                        fontWeight: 700,
-                        backgroundColor: getPriorityColor(item.priorite),
-                        color: '#fff',
+                        fontWeight: 600,
+                        color: getPriorityColor(item.priorite),
+                        border: `1px solid ${getPriorityColor(item.priorite)}`,
+                        backgroundColor: 'transparent',
+                        textTransform: 'capitalize',
                       }}
                     />
                   </TableCell>
 
                   <TableCell align="center">
-                    <Chip 
+                    <Chip
                       label={formatStatus(item.statut)}
-                      size="small"
                       color={getStatusColor(item.statut)}
+                      variant="outlined"
                       icon={
-                        getStatusColor(item.statut) === 'success' ? <CheckCircle sx={{ fontSize: '16px !important' }} /> :
-                        getStatusColor(item.statut) === 'warning' ? <TrendingUp sx={{ fontSize: '16px !important' }} /> :
-                        <Schedule sx={{ fontSize: '16px !important' }} />
+                        getStatusColor(item.statut) === 'success' ? (
+                          <CheckCircle sx={{ fontSize: '16px !important' }} />
+                        ) : getStatusColor(item.statut) === 'warning' ? (
+                          <TrendingUp sx={{ fontSize: '16px !important' }} />
+                        ) : (
+                          <Schedule sx={{ fontSize: '16px !important' }} />
+                        )
                       }
                       sx={{ fontWeight: 600 }}
                     />
@@ -289,34 +394,40 @@ const ReclamationsTable: React.FC<Props> = ({ items, onEdit, onDelete, onView })
                   </TableCell>
 
                   <TableCell align="right">
-                    <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
-                      <Tooltip title="Voir les détails" arrow>
+                    <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                      <Tooltip title="Voir les détails">
                         <ActionButton 
-                          size="small" 
-                          className="view"
-                          onClick={() => onView && onView(item)}
+                          className="view" 
+                          onClick={() => onView?.(item)}
+                          size="small"
                         >
                           <Visibility fontSize="small" />
                         </ActionButton>
                       </Tooltip>
-                      <Tooltip title="Modifier" arrow>
-                        <ActionButton 
-                          size="small" 
-                          className="edit"
-                          onClick={() => onEdit(item)}
-                        >
-                          <Edit fontSize="small" />
-                        </ActionButton>
-                      </Tooltip>
-                      <Tooltip title="Supprimer" arrow>
-                        <ActionButton 
-                          size="small" 
-                          className="delete"
-                          onClick={() => onDelete(item.id)}
-                        >
-                          <Delete fontSize="small" />
-                        </ActionButton>
-                      </Tooltip>
+                      
+                      {/* Boutons d'édition et suppression conditionnels */}
+                      {(canEditDelete && canUserEditDelete(item)) && (
+                        <>
+                          <Tooltip title="Modifier">
+                            <ActionButton 
+                              className="edit" 
+                              onClick={() => onEdit(item)}
+                              size="small"
+                            >
+                              <Edit fontSize="small" />
+                            </ActionButton>
+                          </Tooltip>
+                          <Tooltip title="Supprimer">
+                            <ActionButton 
+                              className="delete" 
+                              onClick={() => onDelete(item.id)}
+                              size="small"
+                            >
+                              <Delete fontSize="small" />
+                            </ActionButton>
+                          </Tooltip>
+                        </>
+                      )}
                     </Box>
                   </TableCell>
                 </StyledTableRow>
@@ -329,7 +440,7 @@ const ReclamationsTable: React.FC<Props> = ({ items, onEdit, onDelete, onView })
       <TablePagination
         rowsPerPageOptions={[5, 10, 25, 50]}
         component="div"
-        count={items.length}
+        count={filteredItems.length}
         rowsPerPage={rowsPerPage}
         page={page}
         onPageChange={(e, newPage) => setPage(newPage)}

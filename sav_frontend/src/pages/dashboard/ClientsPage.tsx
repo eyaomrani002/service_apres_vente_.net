@@ -1,5 +1,5 @@
 // ClientsPage.tsx - Version modernisée
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { Box, Button, Paper, CircularProgress, Snackbar, Alert, Grid, Card, CardContent, Typography, Chip, Avatar } from '@mui/material';
 import { styled, keyframes } from '@mui/material/styles';
 import { Add, People, TrendingUp, Assignment, CheckCircle } from '@mui/icons-material';
@@ -10,6 +10,8 @@ import ClientFilters from '../../components/clients/ClientFilters';
 import { Client } from '../../types/client';
 import { clientService } from '../../services/clientService';
 import ClientDetailsDialog from '../../components/clients/ClientDetailsDialog';
+import { getUsers } from '../../services/userService';
+import AuthContext from '../../contexts/AuthContext';
 
 // Animations
 const fadeIn = keyframes`
@@ -82,12 +84,67 @@ const ClientsPage: React.FC = () => {
   const [messageType, setMessageType] = useState<'success' | 'error' | 'info'>('info');
   const [stats, setStats] = useState<{ total?: number; withReclamations?: number } | null>(null);
   const [selected, setSelected] = useState<Client | null>(null);
+  const { user, hasRole } = useContext(AuthContext);
+
+  const isAdmin = useMemo(() => hasRole('admin'), [hasRole]);
 
   const load = async () => {
     setLoading(true);
     try {
       const data = await clientService.getAll();
-      setClients(data || []);
+
+      // Récupérer les users côté Auth ayant le rôle Client
+      let merged = data || [];
+      if (isAdmin) {
+        try {
+          const users = await getUsers();
+          const clientUsers = users.filter((u) => u.roles?.some((r) => r.toLowerCase() === 'client'));
+
+          const existingEmails = new Set((merged || []).map((c) => (c.email || '').toLowerCase()));
+
+          let syntheticIndex = 1;
+          clientUsers.forEach((u) => {
+            if (u.email && !existingEmails.has(u.email.toLowerCase())) {
+              merged.push({
+                id: -syntheticIndex++,
+                nom: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.userName || u.email,
+                email: u.email,
+                telephone: u.phoneNumber,
+                dateInscription: u.lastLoginAt ?? undefined,
+                nombreReclamations: 0,
+                reclamationsEnCours: 0,
+                isAuthUser: true,
+                userId: u.id,
+              });
+            }
+          });
+        } catch (e) {
+          // ignorer silencieusement, on affichera au moins les clients ClientAPI
+          console.warn('Impossible de charger les users pour fusion', e);
+        }
+      }
+
+      // Si pas admin, limiter la vue aux clients correspondant à l'utilisateur connecté
+      if (!isAdmin && user?.email) {
+        merged = merged.filter((c) => c.email?.toLowerCase() === user.email.toLowerCase());
+
+        // Si rien n'existe encore pour ce user client, créer une fiche légère pour affichage
+        if (merged.length === 0) {
+          merged.push({
+            id: -1,
+            nom: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.name || user.email,
+            email: user.email,
+            telephone: user.phoneNumber,
+            dateInscription: user.lastLoginAt ?? undefined,
+            nombreReclamations: 0,
+            reclamationsEnCours: 0,
+            isAuthUser: true,
+            userId: user.id?.toString?.() ?? undefined,
+          });
+        }
+      }
+
+      setClients(merged);
       const s = await clientService.getStats();
       setStats({ total: s?.TotalClients, withReclamations: s?.ClientsAvecReclamations });
     } catch (e: any) {
@@ -99,7 +156,7 @@ const ClientsPage: React.FC = () => {
 
   useEffect(() => { 
     load(); 
-  }, []);
+  }, [isAdmin, user?.email]);
 
   const showMessage = (msg: string, type: 'success' | 'error' | 'info' = 'info') => {
     setMessage(msg);

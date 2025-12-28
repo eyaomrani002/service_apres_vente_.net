@@ -9,6 +9,7 @@ namespace AuthAPI.Services
         Task<AuthModel> RefreshTokenAsync(RefreshTokenRequest model);
         Task<bool> LogoutAsync(string userId);
         Task<string> AddRoleAsync(AddRoleModel model);
+        Task<string> RemoveRoleAsync(AddRoleModel model);
         Task<string> CreateRoleAsync(string roleName);
         Task<ApplicationUser> GetUserByIdAsync(string userId);
         Task<List<string>> GetUserRolesAsync(string userId);

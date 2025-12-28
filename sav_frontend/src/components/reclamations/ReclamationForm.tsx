@@ -1,5 +1,5 @@
 // ReclamationForm.tsx - Formulaire moderne pour créer/modifier une réclamation
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   Dialog, DialogTitle, DialogContent, DialogActions, 
   TextField, Button, Grid, MenuItem, Box, Typography,
@@ -12,7 +12,10 @@ import {
 } from '@mui/icons-material';
 import { Reclamation } from '../../types/reclamation';
 import { Client } from '../../types/client';
+import { Article } from '../../types/article';
 import { clientService } from '../../services/clientService';
+import { articleService } from '../../services/articleService';
+import { getUsers } from '../../services/userService';
 
 // Animations
 const fadeIn = keyframes`
@@ -106,18 +109,28 @@ interface Props {
   reclamation?: Reclamation | null;
   onClose: () => void;
   onSave: (c: Partial<Reclamation>) => void;
+  /** valeurs initiales injectées (ex: clientId connecté, articleId sélectionné) */
+  initialData?: Partial<Reclamation> | null;
+  /** si vrai, on verrouille le client (pas de changement possible) */
+  lockClient?: boolean;
+  /** utilisateur courant pour pré-remplir clientId ou limiter */
+  currentUser?: { email?: string; id?: string | number; roles?: string[] } | null;
+  /** flag admin pour merger les clients Auth dans la liste */
+  isAdmin?: boolean;
 }
 
-const ReclamationForm: React.FC<Props> = ({ open, reclamation, onClose, onSave }) => {
+const ReclamationForm: React.FC<Props> = ({ open, reclamation, onClose, onSave, initialData, lockClient, currentUser, isAdmin }) => {
   const [form, setForm] = useState<Partial<Reclamation>>({});
   const [clients, setClients] = useState<Client[]>([]);
+  const [articles, setArticles] = useState<Article[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       setForm(reclamation ? { ...reclamation } : { 
-        clientId: undefined, 
+        clientId: initialData?.clientId ?? undefined, 
+        articleId: initialData?.articleId ?? undefined,
         sujet: '', 
         description: '', 
         priorite: 'moyenne', 
@@ -125,18 +138,59 @@ const ReclamationForm: React.FC<Props> = ({ open, reclamation, onClose, onSave }
       });
       setErrors({});
     }
-  }, [reclamation, open]);
+  }, [reclamation, open, initialData]);
 
   useEffect(() => {
     let ignore = false;
+    // Ne charger les clients que si le champ est déverrouillé (admin)
+    if (!lockClient) {
+      (async () => {
+        try {
+          const baseClients = await clientService.getAll();
+          let merged: Client[] = Array.isArray(baseClients) ? baseClients : [];
+
+          if (isAdmin) {
+            try {
+              const users = await getUsers();
+              const clientUsers = users.filter((u) => u.roles?.some((r) => r.toLowerCase() === 'client'));
+              const existingEmails = new Set((merged || []).map((c) => (c.email || '').toLowerCase()));
+              let syntheticIndex = 1;
+              clientUsers.forEach((u) => {
+                if (u.email && !existingEmails.has(u.email.toLowerCase())) {
+                  merged.push({
+                    id: -syntheticIndex++,
+                    nom: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.userName || u.email,
+                    email: u.email,
+                    telephone: u.phoneNumber || undefined,
+                    dateInscription: u.lastLoginAt ?? undefined,
+                    nombreReclamations: 0,
+                    reclamationsEnCours: 0,
+                    isAuthUser: true,
+                    userId: u.id,
+                  });
+                }
+              });
+            } catch (e) {
+              console.warn('Impossible de fusionner les users côté formulaire réclamation', e);
+            }
+          }
+
+          if (!ignore) setClients(merged);
+        } catch {
+          if (!ignore) setClients([]);
+        }
+      })();
+    }
+
     (async () => {
       try {
-        const data = await clientService.getAll();
-        if (!ignore) setClients(Array.isArray(data) ? data : []);
+        const data = await articleService.getAll();
+        if (!ignore) setArticles(Array.isArray(data) ? data : []);
       } catch {
-        if (!ignore) setClients([]);
+        if (!ignore) setArticles([]);
       }
     })();
+
     return () => { ignore = true; };
   }, [open]);
 
@@ -153,6 +207,10 @@ const ReclamationForm: React.FC<Props> = ({ open, reclamation, onClose, onSave }
     if (!form.clientId) {
       newErrors.clientId = 'Le client est requis';
     }
+
+    if (!form.articleId) {
+      newErrors.articleId = 'L\'article est requis';
+    }
     
     if (!form.sujet || form.sujet.trim() === '') {
       newErrors.sujet = 'Le sujet est requis';
@@ -166,10 +224,40 @@ const ReclamationForm: React.FC<Props> = ({ open, reclamation, onClose, onSave }
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = () => {
-    if (validate()) {
-      onSave(form);
+  const handleSubmit = async () => {
+    if (!validate()) return;
+
+    const payload = { ...form };
+
+    if (!lockClient && form.clientId) {
+      const selected = clients.find(c => c.id === form.clientId);
+      if (selected?.isAuthUser) {
+        try {
+          const email = selected.email || `client-${selected.userId || 'auth'}@placeholder.local`;
+          let ensured = null as any;
+
+          // Tenter de créer directement le client; si déjà existant, fallback sur la recherche par email
+          try {
+            ensured = await clientService.create({
+              nom: selected.nom || email,
+              email,
+              telephone: selected.telephone,
+              adresse: selected.adresse,
+            } as any);
+          } catch (createErr) {
+            // Si la création échoue (ex: existe déjà), essayer de le récupérer par email
+            ensured = await clientService.getByEmail(email).catch(() => null as any);
+          }
+
+          payload.clientId = ensured?.id ?? payload.clientId;
+        } catch (e) {
+          setErrors(prev => ({ ...prev, clientId: 'Impossible de lier ce client (création/recherche échouée)' }));
+          return;
+        }
+      }
     }
+
+    onSave(payload);
   };
 
   return (
@@ -212,16 +300,17 @@ const ReclamationForm: React.FC<Props> = ({ open, reclamation, onClose, onSave }
         <Grid container spacing={3}>
           <Grid item xs={12} sm={6}>
             <StyledTextField
-              select
+              select={!lockClient}
               fullWidth
               label="Client"
-              value={form.clientId ?? ''}
-              onChange={e => handleChange('clientId', Number(e.target.value))}
+              value={lockClient ? 'Client connecté' : form.clientId ?? ''}
+              onChange={lockClient ? undefined : (e => handleChange('clientId', Number(e.target.value)))}
               onFocus={() => setFocusedField('clientId')}
               onBlur={() => setFocusedField(null)}
-              error={!!errors.clientId}
-              helperText={errors.clientId}
+              error={!!errors.clientId && !lockClient}
+              helperText={lockClient ? 'Le client est votre compte connecté' : errors.clientId}
               required
+              disabled={lockClient}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
@@ -231,12 +320,44 @@ const ReclamationForm: React.FC<Props> = ({ open, reclamation, onClose, onSave }
                     }} />
                   </InputAdornment>
                 ),
+                readOnly: lockClient,
               }}
             >
-              <MenuItem value="" disabled>Sélectionner un client</MenuItem>
-              {clients.map(c => (
+              {!lockClient && <MenuItem value="" disabled>Sélectionner un client</MenuItem>}
+              {!lockClient && clients.map(c => (
                 <MenuItem key={c.id} value={c.id}>
-                  {c.nom}{c.email ? ` — ${c.email}` : ''}
+                  {c.nom}{c.email ? ` — ${c.email}` : ''}{c.isAuthUser ? ' (utilisateur)' : ''}
+                </MenuItem>
+              ))}
+            </StyledTextField>
+          </Grid>
+
+          <Grid item xs={12} sm={6}>
+            <StyledTextField
+              select
+              fullWidth
+              label="Article"
+              value={form.articleId ?? ''}
+              onChange={(e) => handleChange('articleId', Number(e.target.value))}
+              onFocus={() => setFocusedField('articleId')}
+              onBlur={() => setFocusedField(null)}
+              error={!!errors.articleId}
+              helperText={errors.articleId}
+              required
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Description sx={{ 
+                      color: focusedField === 'articleId' ? '#2196F3' : '#9e9e9e',
+                      transition: 'color 0.3s',
+                    }} />
+                  </InputAdornment>
+                ),
+              }}
+            >
+              {articles.map(article => (
+                <MenuItem key={article.id} value={article.id}>
+                  {article.nom || article.reference || `Article #${article.id}`}
                 </MenuItem>
               ))}
             </StyledTextField>

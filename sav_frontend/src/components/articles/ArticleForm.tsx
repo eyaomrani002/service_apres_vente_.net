@@ -1,4 +1,4 @@
-// ArticleForm.tsx - Formulaire moderne pour créer/modifier un article
+// components/articles/ArticleForm.tsx
 import React, { useEffect, useState } from 'react';
 import { 
   Dialog, DialogTitle, DialogContent, DialogActions, 
@@ -8,7 +8,8 @@ import {
 import { styled, keyframes } from '@mui/material/styles';
 import { 
   Inventory, Category, Description, AttachMoney, 
-  Store, Tag, Close, Save, Cancel, CheckCircle, Warning
+  Tag, Close, Save, Cancel, CheckCircle, Warning,
+  CalendarToday, AccessTime, Badge
 } from '@mui/icons-material';
 import { Article } from '../../types/article';
 
@@ -24,7 +25,7 @@ const StyledDialog = styled(Dialog)(({ theme }) => ({
     borderRadius: '24px',
     padding: '8px',
     animation: `${fadeIn} 0.3s ease`,
-    maxWidth: '700px',
+    maxWidth: '800px',
     width: '100%',
   },
 }));
@@ -127,7 +128,19 @@ interface Props {
 }
 
 const ArticleForm: React.FC<Props> = ({ open, article, onClose, onSave }) => {
-  const [form, setForm] = useState<Partial<Article>>({});
+  const [form, setForm] = useState<Partial<Article>>({
+    reference: '',
+    nom: '',
+    type: '',
+    description: '',
+    prixAchat: 0,
+    dateAchat: new Date().toISOString().split('T')[0],
+    dureeGarantieMois: 24,
+    estEnStock: true,
+    estSousGarantie: false,
+    imageUrl: ''
+  });
+  
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -135,49 +148,59 @@ const ArticleForm: React.FC<Props> = ({ open, article, onClose, onSave }) => {
 
   useEffect(() => {
     if (open) {
-      setForm(article ? { ...article } : { 
-        reference: '',
-        nom: '',
-        type: '',
-        prixAchat: 0,
-        estEnStock: true,
-        estSousGarantie: false,
-        quantite: 0,
-        description: '',
-        fournisseur: ''
-      });
+      if (article) {
+        // Formater la date pour l'input date
+        const formattedArticle = {
+          ...article,
+          dateAchat: article.dateAchat ? article.dateAchat.split('T')[0] : new Date().toISOString().split('T')[0]
+        };
+        setForm(formattedArticle);
+        setPreview(article.imageUrl || null);
+      } else {
+        setForm({
+          reference: '',
+          nom: '',
+          type: '',
+          description: '',
+          prixAchat: 0,
+          dateAchat: new Date().toISOString().split('T')[0],
+          dureeGarantieMois: 24,
+          estEnStock: true,
+          estSousGarantie: false,
+          imageUrl: ''
+        });
+        setPreview(null);
+      }
       setErrors({});
       setImageFile(null);
-      setPreview(article?.imageUrl || null);
     }
   }, [article, open]);
 
-  const handleChange = (k: keyof Article, v: any) => {
-    if (k === 'prixAchat' || k === 'quantite') {
-      const numValue = v === '' ? 0 : Number(v);
-      setForm(s => ({ ...s, [k]: numValue }));
+  const handleChange = (field: keyof Article, value: any) => {
+    if (field === 'prixAchat' || field === 'dureeGarantieMois') {
+      const numValue = value === '' ? 0 : Number(value);
+      setForm(prev => ({ ...prev, [field]: numValue }));
     } else {
-      setForm(s => ({ ...s, [k]: v }));
+      setForm(prev => ({ ...prev, [field]: value }));
     }
     
-    // Clear error when user starts typing
-    if (errors[k]) {
-      setErrors(prev => ({ ...prev, [k]: '' }));
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: '' }));
     }
   };
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
     
-    if (!form.reference || form.reference.trim() === '') {
+    if (!form.reference?.trim()) {
       newErrors.reference = 'La référence est requise';
     }
     
-    if (!form.nom || form.nom.trim() === '') {
+    if (!form.nom?.trim()) {
       newErrors.nom = 'Le nom est requis';
     }
     
-    if (!form.type || form.type.trim() === '') {
+    if (!form.type?.trim()) {
       newErrors.type = 'Le type est requis';
     }
     
@@ -185,8 +208,12 @@ const ArticleForm: React.FC<Props> = ({ open, article, onClose, onSave }) => {
       newErrors.prixAchat = 'Le prix d\'achat doit être positif';
     }
     
-    if (form.quantite !== undefined && form.quantite < 0) {
-      newErrors.quantite = 'La quantité doit être positive';
+    if (!form.dateAchat) {
+      newErrors.dateAchat = 'La date d\'achat est requise';
+    }
+    
+    if (form.dureeGarantieMois === undefined || form.dureeGarantieMois < 0) {
+      newErrors.dureeGarantieMois = 'La durée de garantie doit être positive';
     }
     
     setErrors(newErrors);
@@ -195,15 +222,27 @@ const ArticleForm: React.FC<Props> = ({ open, article, onClose, onSave }) => {
 
   const handleSubmit = () => {
     if (validate()) {
-      onSave(form, imageFile);
+      // Convertir la date au format ISO pour le backend
+      const formData = {
+        ...form,
+        dateAchat: new Date(form.dateAchat!).toISOString()
+      };
+      onSave(formData, imageFile);
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    
     setImageFile(file);
-    setPreview(URL.createObjectURL(file));
+    
+    // Créer une preview locale
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   const articleTypes = [
@@ -218,7 +257,7 @@ const ArticleForm: React.FC<Props> = ({ open, article, onClose, onSave }) => {
   ];
 
   return (
-    <StyledDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <StyledDialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <StyledDialogTitle>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Inventory sx={{ fontSize: 32 }} />
@@ -255,20 +294,25 @@ const ArticleForm: React.FC<Props> = ({ open, article, onClose, onSave }) => {
         </Typography>
 
         <Grid container spacing={3}>
-          {/* Image */}
+          {/* Image Upload */}
           <Grid item xs={12}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
               <Button variant="outlined" component="label" sx={{ borderRadius: '10px' }}>
-                Ajouter une image
+                {preview || form.imageUrl ? 'Changer l\'image' : 'Ajouter une image'}
                 <input type="file" hidden accept="image/*" onChange={handleFileChange} />
               </Button>
-              {preview && (
+              {(preview || form.imageUrl) && (
                 <Box sx={{ width: 80, height: 80, borderRadius: '12px', overflow: 'hidden', border: '1px solid #eee' }}>
-                  <img src={preview} alt="aperçu" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <img 
+                    src={preview || form.imageUrl} 
+                    alt="aperçu" 
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                  />
                 </Box>
               )}
             </Box>
           </Grid>
+
           {/* Référence et Nom */}
           <Grid item xs={12} sm={6}>
             <StyledTextField
@@ -380,31 +424,29 @@ const ArticleForm: React.FC<Props> = ({ open, article, onClose, onSave }) => {
             />
           </Grid>
 
-          {/* Quantité et Fournisseur */}
+          {/* Date d'achat et Durée garantie */}
           <Grid item xs={12} sm={6}>
             <StyledTextField
               fullWidth
-              label="Quantité"
-              type="number"
-              value={form.quantite ?? ''}
-              onChange={e => handleChange('quantite', e.target.value)}
-              onFocus={() => setFocusedField('quantite')}
+              label="Date d'achat *"
+              type="date"
+              value={form.dateAchat || ''}
+              onChange={e => handleChange('dateAchat', e.target.value)}
+              onFocus={() => setFocusedField('dateAchat')}
               onBlur={() => setFocusedField(null)}
-              error={!!errors.quantite}
-              helperText={errors.quantite}
+              error={!!errors.dateAchat}
+              helperText={errors.dateAchat}
+              required
+              InputLabelProps={{ shrink: true }}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <Inventory sx={{ 
-                      color: focusedField === 'quantite' ? '#2196F3' : '#9e9e9e',
+                    <CalendarToday sx={{ 
+                      color: focusedField === 'dateAchat' ? '#00BCD4' : '#9e9e9e',
                       transition: 'color 0.3s',
                     }} />
                   </InputAdornment>
                 ),
-                inputProps: { 
-                  min: 0,
-                  step: 1
-                }
               }}
             />
           </Grid>
@@ -412,20 +454,29 @@ const ArticleForm: React.FC<Props> = ({ open, article, onClose, onSave }) => {
           <Grid item xs={12} sm={6}>
             <StyledTextField
               fullWidth
-              label="Fournisseur"
-              value={form.fournisseur || ''}
-              onChange={e => handleChange('fournisseur', e.target.value)}
-              onFocus={() => setFocusedField('fournisseur')}
+              label="Durée garantie (mois) *"
+              type="number"
+              value={form.dureeGarantieMois ?? ''}
+              onChange={e => handleChange('dureeGarantieMois', e.target.value)}
+              onFocus={() => setFocusedField('dureeGarantieMois')}
               onBlur={() => setFocusedField(null)}
+              error={!!errors.dureeGarantieMois}
+              helperText={errors.dureeGarantieMois}
+              required
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <Store sx={{ 
-                      color: focusedField === 'fournisseur' ? '#FF9800' : '#9e9e9e',
+                    <AccessTime sx={{ 
+                      color: focusedField === 'dureeGarantieMois' ? '#FF9800' : '#9e9e9e',
                       transition: 'color 0.3s',
                     }} />
                   </InputAdornment>
                 ),
+                inputProps: { 
+                  min: 0,
+                  max: 120,
+                  step: 1
+                }
               }}
             />
           </Grid>

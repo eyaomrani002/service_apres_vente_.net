@@ -490,6 +490,21 @@ namespace AuthAPI.Controllers
         }
 
         [Authorize(Roles = "Admin")]
+        [HttpPost("removerole")]
+        public async Task<IActionResult> RemoveRoleAsync([FromBody] AddRoleModel model)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var result = await _authService.RemoveRoleAsync(model);
+
+            if (!string.IsNullOrEmpty(result))
+                return BadRequest(new { message = result });
+
+            return Ok(new { message = "Role removed successfully", model });
+        }
+
+        [Authorize(Roles = "Admin")]
         [HttpPost("createrole")]
         public async Task<IActionResult> CreateRoleAsync([FromBody] string roleName)
         {

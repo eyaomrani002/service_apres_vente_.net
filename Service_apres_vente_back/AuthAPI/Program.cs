@@ -12,6 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
+builder.Services.AddHttpClient();
 
 // Configuration CORS
 builder.Services.AddCors(options =>
@@ -74,6 +75,15 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = builder.Configuration["JWT:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JWT:Key"]))
     };
+});
+
+// Authorization policies (roles)
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("Admin", policy => policy.RequireRole("Admin"));
+    options.AddPolicy("ResponsableSAV", policy => policy.RequireRole("ResponsableSAV", "Admin"));
+    options.AddPolicy("Technicien", policy => policy.RequireRole("Technicien", "Admin", "ResponsableSAV"));
+    options.AddPolicy("Client", policy => policy.RequireRole("Client", "Admin", "ResponsableSAV"));
 });
 
 // Configure Swagger - CORRIGEZ CECI

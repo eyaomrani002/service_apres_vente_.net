@@ -1,5 +1,5 @@
 import './App.css'
-import { useContext } from 'react';
+import { useContext, ReactElement } from 'react';
 
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
@@ -36,12 +36,20 @@ import CatalogPage from './pages/catalog/CatalogPage';
 import CartPage from './pages/cart/CartPage';
 
 function AppContent() {
-  const { isAuthenticated, loading } = useContext(AuthContext);
+  const { isAuthenticated, loading, hasAnyRole } = useContext(AuthContext);
 
   if (loading) return null;
 
+  const ProtectedRoute = ({ element, roles }: { element: ReactElement; roles?: string[] }) => {
+    if (!isAuthenticated) return <Navigate to="/login" replace />;
+    if (roles && roles.length > 0 && !hasAnyRole(roles.map((r) => r.toLowerCase()))) {
+      return <Navigate to="/catalog" replace />;
+    }
+    return element;
+  };
+
   return (
-    <Router>
+    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         {/* Root: redirect depending on auth state */}
         <Route path="/" element={isAuthenticated ? <Navigate to="/catalog" replace /> : <Navigate to="/login" replace />} />
@@ -55,18 +63,18 @@ function AppContent() {
 
         {/* Protected routes: MainLayout is only mounted when authenticated */}
         <Route element={isAuthenticated ? <MainLayout /> : <Navigate to="/login" replace />}>
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/catalog" element={<CatalogPage />} />
-          <Route path="/cart" element={<CartPage />} />
-          <Route path="/articles" element={<ArticlesPage />} />
-          <Route path="/clients" element={<ClientsPage />} />
-          <Route path="/users" element={<UsersPage />} />
-          <Route path="/reclamations" element={<ReclamationsPage />} />
-          <Route path="/interventions" element={<InterventionsPage />} />
-          <Route path="/calendar" element={<CalendarPage />} />
-          <Route path="/reports" element={<ReportingPage />} />
-          <Route path="/factures" element={<FacturesPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/dashboard" element={<ProtectedRoute element={<DashboardPage />} roles={['admin']} />} />
+          <Route path="/catalog" element={<ProtectedRoute element={<CatalogPage />} />} />
+          <Route path="/cart" element={<ProtectedRoute element={<CartPage />} />} />
+          <Route path="/articles" element={<ProtectedRoute element={<ArticlesPage />} roles={['admin']} />} />
+          <Route path="/clients" element={<ProtectedRoute element={<ClientsPage />} roles={['admin']} />} />
+          <Route path="/users" element={<ProtectedRoute element={<UsersPage />} roles={['admin']} />} />
+          <Route path="/reclamations" element={<ProtectedRoute element={<ReclamationsPage />} />} />
+          <Route path="/interventions" element={<ProtectedRoute element={<InterventionsPage />} roles={['admin']} />} />
+          <Route path="/calendar" element={<ProtectedRoute element={<CalendarPage />} roles={['admin', 'responsablesav', 'technicien']} />} />
+          <Route path="/reports" element={<ProtectedRoute element={<ReportingPage />} roles={['admin', 'responsablesav', 'technicien']} />} />
+          <Route path="/factures" element={<ProtectedRoute element={<FacturesPage />} roles={['admin']} />} />
+          <Route path="/profile" element={<ProtectedRoute element={<ProfilePage />} />} />
         </Route>
 
         {/* Fallback: send to dashboard if authenticated, otherwise to login */}
@@ -90,11 +98,11 @@ function App() {
           },
         }}
       />
-      <CartProvider>
-        <AuthProvider>
+      <AuthProvider>
+        <CartProvider>
           <AppContent />
-        </AuthProvider>
-      </CartProvider>
+        </CartProvider>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

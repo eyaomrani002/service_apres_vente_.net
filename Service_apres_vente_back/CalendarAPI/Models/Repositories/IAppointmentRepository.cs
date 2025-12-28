@@ -12,6 +12,7 @@ namespace CalendarAPI.Models.Repositories
         void Delete(Guid id);
 
         IList<Appointment> GetByTechnicianAndDate(Guid technicianId, DateTime dateUtc);
-        bool Overlaps(Guid technicianId, DateTime startUtc, DateTime endUtc);
+        IList<Appointment> GetByDate(DateTime dateUtc);
+        bool Overlaps(Guid technicianId, DateTime startUtc, DateTime endUtc, Guid? excludeAppointmentId = null);
     }
 }

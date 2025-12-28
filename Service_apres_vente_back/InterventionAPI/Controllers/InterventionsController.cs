@@ -2,6 +2,8 @@
 using InterventionAPI.Models;
 using InterventionAPI.Models.Repositories;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Http;
+using System.Linq;
 
 namespace InterventionAPI.Controllers
 {
@@ -12,17 +14,31 @@ namespace InterventionAPI.Controllers
         private readonly IInterventionRepository _repository;
         private readonly ILogger<InterventionsController> _logger;
         private readonly HttpClient _httpClient;
+        private readonly IHttpContextAccessor _httpContextAccessor;
         private const string NotificationEndpoint = "https://localhost:7076/apigateway/notifications";
         private const string ClientApiBase = "https://localhost:7025/api";
 
         public InterventionsController(
             IInterventionRepository repository,
             ILogger<InterventionsController> logger,
-            IHttpClientFactory httpClientFactory)
+            IHttpClientFactory httpClientFactory,
+            IHttpContextAccessor httpContextAccessor)
         {
             _repository = repository;
             _logger = logger;
             _httpClient = httpClientFactory.CreateClient();
+            _httpContextAccessor = httpContextAccessor;
+        }
+
+        private HttpRequestMessage CreateRequest(HttpMethod method, string url)
+        {
+            var req = new HttpRequestMessage(method, url);
+            var authHeader = _httpContextAccessor.HttpContext?.Request?.Headers["Authorization"].FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(authHeader))
+            {
+                req.Headers.TryAddWithoutValidation("Authorization", authHeader);
+            }
+            return req;
         }
 
         private async Task TrySendNotificationAsync(string recipient, string subject, string message, string type = "info")
@@ -105,11 +121,15 @@ namespace InterventionAPI.Controllers
                 if (!ModelState.IsValid)
                     return BadRequest(ModelState);
 
+                // Vérifier que le technicien existe
+                if (!_repository.TechnicienExists(intervention.TechnicienId))
+                    return BadRequest($"Technicien avec ID {intervention.TechnicienId} non trouvé");
+
                 // Validations croisées strictes
                 // 1) Vérifier que la réclamation existe (ClientAPI)
                 try
                 {
-                    var reclResponse = await _httpClient.GetAsync($"https://localhost:7025/api/reclamations/{intervention.ReclamationId}");
+                    var reclResponse = await _httpClient.SendAsync(CreateRequest(HttpMethod.Get, $"https://localhost:7025/api/reclamations/{intervention.ReclamationId}"));
                     if (!reclResponse.IsSuccessStatusCode)
                         return BadRequest($"Réclamation avec ID {intervention.ReclamationId} n'existe pas");
 
@@ -122,7 +142,7 @@ namespace InterventionAPI.Controllers
                         if (doc.RootElement.TryGetProperty("clientId", out var clientIdEl))
                         {
                             var clientId = clientIdEl.GetInt32();
-                            var clientResp = await _httpClient.GetAsync($"https://localhost:7025/api/clients/{clientId}");
+                            var clientResp = await _httpClient.SendAsync(CreateRequest(HttpMethod.Get, $"https://localhost:7025/api/clients/{clientId}"));
                             if (!clientResp.IsSuccessStatusCode)
                                 return BadRequest($"Client avec ID {clientId} n'existe pas");
                         }
@@ -143,7 +163,21 @@ namespace InterventionAPI.Controllers
                 }
 
                 // Utiliser la logique métier de garantie: gratuite si article sous garantie
-                var created = await _repository.CreateInterventionAvecGarantie(intervention);
+                Intervention created;
+                try
+                {
+                    created = await _repository.CreateInterventionAvecGarantie(intervention);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    _logger.LogWarning(ex, "Validation métier échouée lors de la création intervention");
+                    return BadRequest(ex.Message);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Erreur métier lors de la création intervention");
+                    return StatusCode(500, "Erreur serveur");
+                }
 
                 // Notifier le client lié à la réclamation
                 _ = Task.Run(async () =>
@@ -191,6 +225,9 @@ namespace InterventionAPI.Controllers
 
                 if (!ModelState.IsValid)
                     return BadRequest(ModelState);
+
+                if (!_repository.TechnicienExists(intervention.TechnicienId))
+                    return BadRequest($"Technicien avec ID {intervention.TechnicienId} non trouvé");
 
                 if (!_repository.InterventionExists(id))
                     return NotFound($"Intervention avec ID {id} non trouvée");

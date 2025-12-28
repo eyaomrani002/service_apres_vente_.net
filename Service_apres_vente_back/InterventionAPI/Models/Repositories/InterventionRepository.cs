@@ -3,6 +3,8 @@ using InterventionAPI.Data;
 using InterventionAPI.Models;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
+using System.Linq;
 
 namespace InterventionAPI.Models.Repositories
 {
@@ -11,15 +13,29 @@ namespace InterventionAPI.Models.Repositories
         private readonly InterventionAPIContext _context;
         private readonly HttpClient _httpClient;
         private readonly ILogger<InterventionRepository> _logger;
+        private readonly IHttpContextAccessor _httpContextAccessor;
 
         public InterventionRepository(
             InterventionAPIContext context,
             IHttpClientFactory httpClientFactory,
-            ILogger<InterventionRepository> logger)
+            ILogger<InterventionRepository> logger,
+            IHttpContextAccessor httpContextAccessor)
         {
             _context = context;
             _httpClient = httpClientFactory.CreateClient();
             _logger = logger;
+            _httpContextAccessor = httpContextAccessor;
+        }
+
+        private HttpRequestMessage CreateRequest(HttpMethod method, string url)
+        {
+            var req = new HttpRequestMessage(method, url);
+            var authHeader = _httpContextAccessor.HttpContext?.Request?.Headers["Authorization"].FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(authHeader))
+            {
+                req.Headers.TryAddWithoutValidation("Authorization", authHeader);
+            }
+            return req;
         }
 
         // ========== MÉTHODES DE GARANTIE ET LOGIQUE MÉTIER ==========
@@ -31,7 +47,7 @@ namespace InterventionAPI.Models.Repositories
                 // 1. Récupérer la réclamation pour avoir l'article ID
                 var reclamation = await GetReclamationInfo(intervention.ReclamationId);
                 if (reclamation == null)
-                    throw new Exception($"Réclamation {intervention.ReclamationId} non trouvée");
+                    throw new InvalidOperationException($"Réclamation {intervention.ReclamationId} non trouvée via gateway");
 
                 // 2. Vérifier si l'article est sous garantie
                 bool estSousGarantie = await VerifierGarantieArticle(reclamation.ArticleId);
@@ -83,7 +99,7 @@ namespace InterventionAPI.Models.Repositories
         {
             try
             {
-                var response = await _httpClient.GetAsync($"http://localhost:7076/apigateway/articles/{articleId}/garantie");
+                var response = await _httpClient.SendAsync(CreateRequest(HttpMethod.Get, $"https://localhost:7076/apigateway/articles/{articleId}/garantie"));
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -109,7 +125,7 @@ namespace InterventionAPI.Models.Repositories
         {
             try
             {
-                var response = await _httpClient.GetAsync($"http://localhost:7076/apigateway/reclamations/{reclamationId}");
+                var response = await _httpClient.SendAsync(CreateRequest(HttpMethod.Get, $"https://localhost:7076/apigateway/reclamations/{reclamationId}"));
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -135,7 +151,7 @@ namespace InterventionAPI.Models.Repositories
         {
             try
             {
-                var response = await _httpClient.GetAsync($"http://localhost:7076/apigateway/articles/{articleId}");
+                var response = await _httpClient.SendAsync(CreateRequest(HttpMethod.Get, $"https://localhost:7076/apigateway/articles/{articleId}"));
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -205,7 +221,7 @@ namespace InterventionAPI.Models.Repositories
         {
             try
             {
-                var response = await _httpClient.GetAsync($"http://localhost:7076/apigateway/clients/{clientId}");
+                var response = await _httpClient.SendAsync(CreateRequest(HttpMethod.Get, $"https://localhost:7076/apigateway/clients/{clientId}"));
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -476,6 +492,72 @@ namespace InterventionAPI.Models.Repositories
                 .Include(f => f.Intervention)
                 .AsQueryable();
 
+        // ========== TECHNICIENS ========== 
+
+        public IList<Technicien> GetTechniciens() =>
+            _context.Techniciens
+                .Where(t => t.IsActif)
+                .OrderBy(t => t.Nom)
+                .ToList();
+
+        public IList<Technicien> GetTechniciensDisponibles() =>
+            _context.Techniciens
+                .Where(t => t.IsActif && t.Disponibilite == "Disponible")
+                .OrderBy(t => t.Nom)
+                .ToList();
+
+        public Technicien? GetTechnicienById(int id) =>
+            _context.Techniciens.FirstOrDefault(t => t.Id == id && t.IsActif);
+
+        public Technicien? GetTechnicienByUserId(string userId) =>
+            _context.Techniciens.FirstOrDefault(t => t.UserId == userId && t.IsActif);
+
+        public Technicien AddTechnicien(Technicien technicien)
+        {
+            technicien.DateCreation = DateTime.UtcNow;
+            technicien.DateMaj = DateTime.UtcNow;
+            _context.Techniciens.Add(technicien);
+            _context.SaveChanges();
+            return technicien;
+        }
+
+        public Technicien? UpdateTechnicien(Technicien technicien)
+        {
+            var existing = _context.Techniciens.FirstOrDefault(t => t.Id == technicien.Id);
+            if (existing == null) return null;
+
+            existing.Nom = technicien.Nom;
+            existing.Email = technicien.Email;
+            existing.Telephone = technicien.Telephone;
+            existing.Zone = technicien.Zone;
+            existing.Disponibilite = technicien.Disponibilite;
+            existing.IsActif = technicien.IsActif;
+            existing.Competences = technicien.Competences;
+            existing.UserId = technicien.UserId ?? existing.UserId;
+            existing.DateMaj = DateTime.UtcNow;
+
+            _context.SaveChanges();
+            return existing;
+        }
+
+        public void DeleteTechnicien(int id)
+        {
+            var existing = _context.Techniciens.FirstOrDefault(t => t.Id == id);
+            if (existing == null) return;
+            _context.Techniciens.Remove(existing);
+            _context.SaveChanges();
+        }
+
+        public Technicien? SetDisponibilite(int id, string disponibilite)
+        {
+            var existing = _context.Techniciens.FirstOrDefault(t => t.Id == id);
+            if (existing == null) return null;
+            existing.Disponibilite = disponibilite;
+            existing.DateMaj = DateTime.UtcNow;
+            _context.SaveChanges();
+            return existing;
+        }
+
         // ========== RECHERCHE AVANCÉE ==========
 
         public IQueryable<Intervention> AdvancedInterventionSearch(
@@ -630,6 +712,9 @@ namespace InterventionAPI.Models.Repositories
 
         public bool FactureExists(int id) =>
             _context.Factures.Any(f => f.Id == id);
+
+        public bool TechnicienExists(int id) =>
+            _context.Techniciens.Any(t => t.Id == id && t.IsActif);
 
         public int CountInterventions() =>
             _context.Interventions.Count();

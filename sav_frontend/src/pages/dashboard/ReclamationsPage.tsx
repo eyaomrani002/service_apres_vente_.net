@@ -1,5 +1,5 @@
 // ReclamationsPage.tsx - Version modernisée
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { Box, Paper, CircularProgress, Snackbar, Alert, Button, Grid, Card, CardContent, Typography, Avatar } from '@mui/material';
 import { styled, keyframes } from '@mui/material/styles';
 import { Add, Assignment, Schedule, CheckCircle, Warning, TrendingUp } from '@mui/icons-material';
@@ -9,6 +9,7 @@ import ReclamationsTable from '../../components/reclamations/ReclamationsTable';
 import ReclamationForm from '../../components/reclamations/ReclamationForm';
 import { Reclamation } from '../../types/reclamation';
 import { reclamationService } from '../../services/reclamationService';
+import AuthContext from '../../contexts/AuthContext';
 
 // Animations
 const fadeIn = keyframes`
@@ -76,26 +77,53 @@ const ReclamationsPage: React.FC = () => {
   const [messageType, setMessageType] = useState<'success' | 'error' | 'info'>('info');
   const [stats, setStats] = useState<any>(null);
   const [selected, setSelected] = useState<Reclamation | null>(null);
+  const [currentClientId, setCurrentClientId] = useState<number | null>(null);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const { user } = useContext(AuthContext);
 
   const load = async () => {
     setLoading(true);
     try {
-      const data = await reclamationService.getAll();
-      setItems(Array.isArray(data) ? data : []);
-      try { 
-        const s = await reclamationService.getStats(); 
-        setStats(s); 
-      } catch {}
+      if (!isAdmin) {
+        if (!currentClientId) {
+          setItems([]);
+          setStats(null);
+          return;
+        }
+        const data = await reclamationService.getByClient(currentClientId);
+        setItems(Array.isArray(data) ? data : []);
+        setStats(null); // stats réservées admin
+      } else {
+        const data = await reclamationService.getAll();
+        setItems(Array.isArray(data) ? data : []);
+        try {
+          const s = await reclamationService.getStats();
+          setStats(s);
+        } catch {}
+      }
     } catch (e: any) {
       showMessage(e.message || 'Erreur chargement', 'error');
-    } finally { 
-      setLoading(false); 
+    } finally {
+      setLoading(false);
     }
   };
 
-  useEffect(() => { 
-    load(); 
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.id) setCurrentClientId(Number(parsed.id));
+        const roles = (parsed?.roles || parsed?.role || []).map((r: string) => (r.toLowerCase ? r.toLowerCase() : r));
+        setIsAdmin(Array.isArray(roles) ? roles.includes('admin') : roles === 'admin');
+      }
+    } catch {}
   }, []);
+
+  useEffect(() => {
+    if (!isAdmin && currentClientId === null) return;
+    load();
+  }, [isAdmin, currentClientId]);
 
   const showMessage = (msg: string, type: 'success' | 'error' | 'info' = 'info') => {
     setMessage(msg);
@@ -105,28 +133,46 @@ const ReclamationsPage: React.FC = () => {
   const handleSearch = async (q: { searchTerm?: string; clientId?: number; statut?: string }) => {
     setLoading(true);
     try {
-      if (q.clientId) {
-        const data = await reclamationService.getByClient(q.clientId);
-        setItems(Array.isArray(data) ? data : []);
-      } else {
-        const data = await reclamationService.getAll();
+      const effectiveClientId = isAdmin ? q.clientId : currentClientId ?? undefined;
+
+      if (!isAdmin) {
+        if (!currentClientId) {
+          setItems([]);
+          return;
+        }
+        const data = await reclamationService.getByClient(currentClientId);
         let list: Reclamation[] = Array.isArray(data) ? data : [];
         if (q.searchTerm) {
           const term = q.searchTerm.toLowerCase();
-          list = list.filter(r => 
-            (r.sujet || '').toLowerCase().includes(term) || 
-            (r.description || '').toLowerCase().includes(term)
-          );
+          list = list.filter(r => (r.sujet || '').toLowerCase().includes(term) || (r.description || '').toLowerCase().includes(term));
         }
         if (q.statut) {
           list = list.filter(r => (r.statut || '').toLowerCase() === q.statut!.toLowerCase());
         }
         setItems(list);
+        return;
       }
-    } catch (e: any) { 
-      showMessage(e.message || 'Erreur recherche', 'error'); 
-    } finally { 
-      setLoading(false); 
+
+      if (effectiveClientId) {
+        const data = await reclamationService.getByClient(effectiveClientId);
+        setItems(Array.isArray(data) ? data : []);
+        return;
+      }
+
+      const data = await reclamationService.getAll();
+      let list: Reclamation[] = Array.isArray(data) ? data : [];
+      if (q.searchTerm) {
+        const term = q.searchTerm.toLowerCase();
+        list = list.filter(r => (r.sujet || '').toLowerCase().includes(term) || (r.description || '').toLowerCase().includes(term));
+      }
+      if (q.statut) {
+        list = list.filter(r => (r.statut || '').toLowerCase() === q.statut!.toLowerCase());
+      }
+      setItems(list);
+    } catch (e: any) {
+      showMessage(e.message || 'Erreur recherche', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -153,17 +199,22 @@ const ReclamationsPage: React.FC = () => {
 
   const handleSave = async (payload: Partial<Reclamation>) => {
     try {
+      const body: Partial<Reclamation> = { ...payload };
+      if (!isAdmin && currentClientId) {
+        body.clientId = currentClientId;
+      }
+
       if (editing) {
-        await reclamationService.update(editing.id, payload);
+        await reclamationService.update(editing.id, body);
         showMessage('Réclamation modifiée avec succès', 'success');
       } else {
-        await reclamationService.create(payload);
+        await reclamationService.create(body);
         showMessage('Réclamation créée avec succès', 'success');
       }
-      setOpenForm(false); 
+      setOpenForm(false);
       load();
-    } catch (e: any) { 
-      showMessage(e.message || 'Erreur sauvegarde', 'error'); 
+    } catch (e: any) {
+      showMessage(e.message || 'Erreur sauvegarde', 'error');
     }
   };
 
@@ -287,7 +338,7 @@ const ReclamationsPage: React.FC = () => {
         {/* Header avec filtres et bouton */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
           <Box sx={{ flex: 1, minWidth: '300px' }}>
-            <ReclamationFilters onSearch={handleSearch} />
+            <ReclamationFilters onSearch={handleSearch} disableClientFilter={!isAdmin} isAdmin={isAdmin} />
           </Box>
           <GradientButton 
             startIcon={<Add />} 
@@ -308,6 +359,7 @@ const ReclamationsPage: React.FC = () => {
             onEdit={handleEdit} 
             onDelete={handleDelete} 
             onView={(r) => setSelected(r)} 
+            canEditDelete={isAdmin}
           />
         )}
       </ModernPaper>
@@ -318,6 +370,10 @@ const ReclamationsPage: React.FC = () => {
         reclamation={editing} 
         onClose={() => setOpenForm(false)} 
         onSave={handleSave} 
+        initialData={!isAdmin && !editing ? { clientId: currentClientId ?? undefined } : undefined}
+        lockClient={!isAdmin && !editing && !!currentClientId}
+        currentUser={user as any}
+        isAdmin={isAdmin}
       />
 
       {/* Snackbar */}

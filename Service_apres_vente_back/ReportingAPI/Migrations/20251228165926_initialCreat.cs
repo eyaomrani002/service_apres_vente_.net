@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace ReportingAPI.Migrations
 {
     /// <inheritdoc />
-    public partial class initial : Migration
+    public partial class initialCreat : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -18,6 +18,7 @@ namespace ReportingAPI.Migrations
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     InterventionId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     ClientId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    TechnicianId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     IsWarranty = table.Column<bool>(type: "bit", nullable: false),
                     Total = table.Column<decimal>(type: "decimal(10,2)", nullable: false),
                     GeneratedAt = table.Column<DateTime>(type: "datetime2", nullable: false),

@@ -7,4 +7,5 @@ export interface AppUser {
   roles: string[];
   isActive: boolean;
   lastLoginAt?: string | null;
+  phoneNumber?: string | null;
 }

@@ -1,14 +1,15 @@
-// ArticleDetailsDialog.tsx - Dialog de détails complet pour un article
+// components/articles/ArticleDetailsDialog.tsx
 import React from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, Typography, Box, Chip, Grid, Card, CardContent,
-  Divider, IconButton, Avatar
+  Divider, IconButton, Avatar, Stack
 } from '@mui/material';
 import { styled, keyframes } from '@mui/material/styles';
 import {
   Close, AttachMoney, Inventory, Category, Description,
-  CheckCircle, Warning, Store, LocalShipping, Tag
+  CheckCircle, Warning, CalendarToday, AccessTime,
+  Badge, Store, Timer, Today
 } from '@mui/icons-material';
 import { Article } from '../../types/article';
 
@@ -16,11 +17,6 @@ import { Article } from '../../types/article';
 const fadeIn = keyframes`
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
-`;
-
-const slideIn = keyframes`
-  from { transform: translateX(-20px); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
 `;
 
 // Styled Components
@@ -103,10 +99,30 @@ const ArticleDetailsDialog: React.FC<Props> = ({ open, article, onClose }) => {
     }).format(value);
   };
 
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'Non spécifiée';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  };
+
+  const calculateEndOfWarranty = () => {
+    if (!article.dateAchat) return null;
+    const startDate = new Date(article.dateAchat);
+    const endDate = new Date(startDate);
+    endDate.setMonth(endDate.getMonth() + article.dureeGarantieMois);
+    return endDate;
+  };
+
+  const endOfWarranty = calculateEndOfWarranty();
+
   return (
     <StyledDialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <StyledDialogTitle>
-        <Typography variant="h5" sx={{ fontWeight: 700 }}>
+        <Typography component="div" variant="h5" sx={{ fontWeight: 700 }}>
           Détails de l'Article
         </Typography>
         <IconButton 
@@ -134,7 +150,10 @@ const ArticleDetailsDialog: React.FC<Props> = ({ open, article, onClose }) => {
             <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
               {article.nom}
             </Typography>
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+              Référence: <strong>{article.reference}</strong>
+            </Typography>
+            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
               <Chip 
                 icon={article.estEnStock ? <CheckCircle /> : <Warning />}
                 label={article.estEnStock ? 'En stock' : 'En rupture'} 
@@ -147,30 +166,28 @@ const ArticleDetailsDialog: React.FC<Props> = ({ open, article, onClose }) => {
                   color: '#fff',
                 }}
               />
-              {article.estSousGarantie && (
-                <Chip 
-                  icon={<CheckCircle />}
-                  label="Sous garantie" 
-                  size="small"
-                  sx={{
-                    fontWeight: 600,
-                    background: 'linear-gradient(135deg, #2196F3 0%, #00BCD4 100%)',
-                    color: '#fff',
-                  }}
-                />
-              )}
-              {article.type && (
-                <Chip 
-                  label={article.type}
-                  size="small"
-                  sx={{
-                    fontWeight: 600,
-                    backgroundColor: 'rgba(156, 39, 176, 0.1)',
-                    color: '#9C27B0',
-                  }}
-                />
-              )}
-            </Box>
+              <Chip 
+                icon={article.estSousGarantie ? <CheckCircle /> : <Warning />}
+                label={article.estSousGarantie ? 'Sous garantie' : 'Hors garantie'} 
+                size="small"
+                sx={{
+                  fontWeight: 600,
+                  background: article.estSousGarantie
+                    ? 'linear-gradient(135deg, #2196F3 0%, #00BCD4 100%)'
+                    : 'linear-gradient(135deg, #9E9E9E 0%, #BDBDBD 100%)',
+                  color: '#fff',
+                }}
+              />
+              <Chip 
+                label={article.type}
+                size="small"
+                sx={{
+                  fontWeight: 600,
+                  backgroundColor: 'rgba(156, 39, 176, 0.1)',
+                  color: '#9C27B0',
+                }}
+              />
+            </Stack>
           </Box>
         </Box>
 
@@ -189,41 +206,44 @@ const ArticleDetailsDialog: React.FC<Props> = ({ open, article, onClose }) => {
               </Box>
             </StatBox>
           </Grid>
+          
           <Grid item xs={12} sm={6} md={3}>
             <StatBox>
-              <Inventory sx={{ fontSize: 32, color: '#2196F3' }} />
+              <CalendarToday sx={{ fontSize: 32, color: '#2196F3' }} />
               <Box>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: '#2196F3' }}>
-                  {article.quantite ?? 'N/A'}
+                <Typography variant="body2" sx={{ fontWeight: 700, color: '#2196F3' }}>
+                  {formatDate(article.dateAchat)}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Quantité
+                  Date d'achat
                 </Typography>
               </Box>
             </StatBox>
           </Grid>
+          
           <Grid item xs={12} sm={6} md={3}>
             <StatBox>
-              <Category sx={{ fontSize: 32, color: '#FF9800' }} />
+              <AccessTime sx={{ fontSize: 32, color: '#FF9800' }} />
               <Box>
-                <Typography variant="caption" color="text.secondary">
-                  Type
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#FF9800' }}>
+                  {article.dureeGarantieMois}
                 </Typography>
-                <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                  {article.type || 'Non spécifié'}
+                <Typography variant="caption" color="text.secondary">
+                  Mois garantie
                 </Typography>
               </Box>
             </StatBox>
           </Grid>
+          
           <Grid item xs={12} sm={6} md={3}>
             <StatBox>
-              <Tag sx={{ fontSize: 32, color: '#00BCD4' }} />
+              <Timer sx={{ fontSize: 32, color: '#00BCD4' }} />
               <Box>
-                <Typography variant="caption" color="text.secondary">
-                  Référence
+                <Typography variant="body2" sx={{ fontWeight: 700, color: '#00BCD4' }}>
+                  {endOfWarranty ? formatDate(endOfWarranty.toISOString()) : 'N/A'}
                 </Typography>
-                <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                  {article.reference}
+                <Typography variant="caption" color="text.secondary">
+                  Fin garantie
                 </Typography>
               </Box>
             </StatBox>
@@ -238,7 +258,7 @@ const ArticleDetailsDialog: React.FC<Props> = ({ open, article, onClose }) => {
                 <Description sx={{ mr: 1, verticalAlign: 'middle' }} />
                 Description
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+              <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.6 }}>
                 {article.description}
               </Typography>
             </CardContent>
@@ -248,51 +268,105 @@ const ArticleDetailsDialog: React.FC<Props> = ({ open, article, onClose }) => {
         {/* Informations complémentaires */}
         <InfoCard>
           <CardContent>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#9C27B0' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 3, color: '#9C27B0' }}>
               Informations Complémentaires
             </Typography>
             <Grid container spacing={2}>
-              {article.fournisseur && (
-                <Grid item xs={12} sm={6}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Store sx={{ color: '#FF9800' }} />
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        Fournisseur
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {article.fournisseur}
-                      </Typography>
-                    </Box>
+              <Grid item xs={12} sm={6}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                  <Category sx={{ color: '#9C27B0' }} />
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Type d'article
+                    </Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                      {article.type}
+                    </Typography>
                   </Box>
-                </Grid>
+                </Box>
+              </Grid>
+              
+              <Grid item xs={12} sm={6}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                  <Badge sx={{ color: '#2196F3' }} />
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Référence
+                    </Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                      {article.reference}
+                    </Typography>
+                  </Box>
+                </Box>
+              </Grid>
+              
+              {(article.numeroSerie || article.lieuInstallation || article.typeInstallation) && (
+                <>
+                  {article.numeroSerie && (
+                    <Grid item xs={12} sm={6}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                        <Badge sx={{ color: '#FF9800' }} />
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">
+                            Numéro de série
+                          </Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                            {article.numeroSerie}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Grid>
+                  )}
+                  
+                  {article.lieuInstallation && (
+                    <Grid item xs={12} sm={6}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                        <Store sx={{ color: '#4CAF50' }} />
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">
+                            Lieu d'installation
+                          </Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                            {article.lieuInstallation}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Grid>
+                  )}
+                  
+                  {article.typeInstallation && (
+                    <Grid item xs={12} sm={6}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                        <Inventory sx={{ color: '#00BCD4' }} />
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">
+                            Type d'installation
+                          </Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                            {article.typeInstallation}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Grid>
+                  )}
+                  
+                  {article.dateInstallation && (
+                    <Grid item xs={12} sm={6}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                        <Today sx={{ color: '#9C27B0' }} />
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">
+                            Date installation
+                          </Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                            {formatDate(article.dateInstallation)}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Grid>
+                  )}
+                </>
               )}
-              <Grid item xs={12} sm={6}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <LocalShipping sx={{ color: '#2196F3' }} />
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Statut stock
-                    </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600, color: article.estEnStock ? '#4CAF50' : '#f44336' }}>
-                      {article.estEnStock ? 'Disponible' : 'Rupture de stock'}
-                    </Typography>
-                  </Box>
-                </Box>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <CheckCircle sx={{ color: article.estSousGarantie ? '#4CAF50' : '#9E9E9E' }} />
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Garantie
-                    </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {article.estSousGarantie ? 'Sous garantie' : 'Hors garantie'}
-                    </Typography>
-                  </Box>
-                </Box>
-              </Grid>
             </Grid>
           </CardContent>
         </InfoCard>

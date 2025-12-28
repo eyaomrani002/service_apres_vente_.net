@@ -12,8 +12,8 @@ using ReportingAPI.Data;
 namespace ReportingAPI.Migrations
 {
     [DbContext(typeof(ReportingAPIContext))]
-    [Migration("20251217171522_initial")]
-    partial class initial
+    [Migration("20251228165926_initialCreat")]
+    partial class initialCreat
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -42,6 +42,9 @@ namespace ReportingAPI.Migrations
 
                     b.Property<bool>("IsWarranty")
                         .HasColumnType("bit");
+
+                    b.Property<Guid?>("TechnicianId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Title")
                         .HasMaxLength(200)

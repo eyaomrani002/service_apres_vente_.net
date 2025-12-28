@@ -40,6 +40,9 @@ namespace ReportingAPI.Migrations
                     b.Property<bool>("IsWarranty")
                         .HasColumnType("bit");
 
+                    b.Property<Guid?>("TechnicianId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Title")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");

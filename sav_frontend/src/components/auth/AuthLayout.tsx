@@ -9,14 +9,9 @@ const pulse = keyframes`
   50% { opacity: 0.5; }
 `;
 
-const bounce = keyframes`
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-20px); }
-`;
-
 const float = keyframes`
   0%, 100% { transform: translate(0, 0); }
-  50% { transform: translate(10px, -10px); }
+  50% { transform: translate(8px, -8px); }
 `;
 
 // Styled components
@@ -48,6 +43,11 @@ const GlowingBorder = styled(Box)(({ theme }) => ({
   animation: `${pulse} 2s ease-in-out infinite`,
 }));
 
+const bounce = keyframes`
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+`;
+
 const FloatingIcon = styled(Box)(({ theme }) => ({
   position: 'absolute',
   opacity: 0.3,
@@ -72,7 +72,7 @@ const AuthLayout: React.FC = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #0f172a 100%)',
+        background: 'radial-gradient(circle at 20% 20%, rgba(59,130,246,0.15), transparent 35%), radial-gradient(circle at 80% 0%, rgba(16,185,129,0.12), transparent 28%), linear-gradient(135deg, #0b1021 0%, #0e1a36 45%, #0b1021 100%)',
         py: 6,
         position: 'relative',
         overflow: 'hidden',
@@ -80,15 +80,14 @@ const AuthLayout: React.FC = () => {
     >
       {/* Animated Background */}
       <AnimatedBackground>
-        {/* Orbes flottantes */}
         <FloatingOrb
           sx={{
             width: '400px',
             height: '400px',
             backgroundColor: '#2196F3',
-            top: `${mousePosition.y / 20}px`,
-            left: `${mousePosition.x / 20}px`,
-            opacity: 0.2,
+            top: `${mousePosition.y / 18}px`,
+            left: `${mousePosition.x / 18}px`,
+            opacity: 0.18,
             transition: 'all 0.3s ease-out',
           }}
         />
@@ -97,10 +96,10 @@ const AuthLayout: React.FC = () => {
             width: '350px',
             height: '350px',
             backgroundColor: '#00BCD4',
-            top: '25%',
-            right: '25%',
-            opacity: 0.15,
-            animationDelay: '1s',
+            top: '28%',
+            right: '22%',
+            opacity: 0.14,
+            animationDelay: '0.5s',
           }}
         />
         <FloatingOrb
@@ -110,40 +109,27 @@ const AuthLayout: React.FC = () => {
             backgroundColor: '#03A9F4',
             bottom: '33%',
             left: '33%',
-            opacity: 0.2,
-            animationDelay: '2s',
+            opacity: 0.18,
+            animationDelay: '1.2s',
           }}
         />
-
-        {/* Icônes flottantes décoratives */}
         <FloatingIcon
           sx={{
-            top: '20%',
-            left: '15%',
+            top: '18%',
+            left: '12%',
             fontSize: '24px',
-            animationDuration: '3s',
+            animationDuration: '6s',
           }}
         >
           ✨
         </FloatingIcon>
         <FloatingIcon
           sx={{
-            top: '40%',
-            right: '20%',
-            fontSize: '28px',
-            animationDuration: '4s',
-            animationDelay: '1s',
-          }}
-        >
-          🔒
-        </FloatingIcon>
-        <FloatingIcon
-          sx={{
-            bottom: '30%',
-            left: '25%',
+            bottom: '26%',
+            right: '16%',
             fontSize: '26px',
-            animationDuration: '3.5s',
-            animationDelay: '0.5s',
+            animationDuration: '7s',
+            animationDelay: '1s',
           }}
         >
           ⚡
@@ -177,7 +163,6 @@ const AuthLayout: React.FC = () => {
               minHeight: { md: '600px' },
             }}
           >
-            {/* Left: Illustration */}
             <Box
               sx={{
                 display: { xs: 'none', md: 'flex' },
@@ -185,20 +170,19 @@ const AuthLayout: React.FC = () => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 width: '50%',
-                background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.1) 0%, rgba(0, 188, 212, 0.05) 100%)',
+                background: 'linear-gradient(160deg, rgba(33,150,243,0.08) 0%, rgba(14,165,233,0.05) 60%, rgba(16,185,129,0.08) 100%)',
                 p: 6,
                 position: 'relative',
                 overflow: 'hidden',
               }}
             >
-              {/* Effet de lueur en arrière-plan */}
               <Box
                 sx={{
                   position: 'absolute',
                   width: '200px',
                   height: '200px',
                   borderRadius: '50%',
-                  background: 'radial-gradient(circle, rgba(33, 150, 243, 0.4) 0%, transparent 70%)',
+                  background: 'radial-gradient(circle, rgba(14,165,233,0.4) 0%, transparent 70%)',
                   animation: `${float} 6s ease-in-out infinite`,
                   top: '50%',
                   left: '50%',
@@ -213,7 +197,7 @@ const AuthLayout: React.FC = () => {
                     width: '120px',
                     height: '120px',
                     margin: '0 auto 32px',
-                    background: 'linear-gradient(135deg, #2196F3 0%, #00BCD4 100%)',
+                    background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
                     borderRadius: '24px',
                     display: 'flex',
                     alignItems: 'center',
@@ -242,7 +226,7 @@ const AuthLayout: React.FC = () => {
                   variant="h5"
                   sx={{
                     mt: 4,
-                    background: 'linear-gradient(135deg, #64B5F6 0%, #00BCD4 100%)',
+                      background: 'linear-gradient(135deg, #38bdf8 0%, #22d3ee 100%)',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
                     fontWeight: 700,
@@ -254,7 +238,7 @@ const AuthLayout: React.FC = () => {
                 <Typography
                   variant="body1"
                   sx={{
-                    color: 'rgba(255, 255, 255, 0.7)',
+                      color: 'rgba(255, 255, 255, 0.78)',
                     mt: 2,
                     textAlign: 'center',
                     lineHeight: 1.6,
@@ -270,8 +254,8 @@ const AuthLayout: React.FC = () => {
               sx={{
                 width: { xs: '100%', md: '50%' },
                 p: { xs: 4, md: 6 },
-                bgcolor: 'rgba(0, 0, 0, 0.3)',
-                backdropFilter: 'blur(10px)',
+                bgcolor: 'rgba(10, 15, 35, 0.72)',
+                backdropFilter: 'blur(14px)',
                 position: 'relative',
               }}
             >
@@ -281,10 +265,10 @@ const AuthLayout: React.FC = () => {
                   sx={{
                     display: 'inline-block',
                     p: 2,
-                    borderRadius: '16px',
-                    background: 'linear-gradient(135deg, #2196F3 0%, #00BCD4 100%)',
+                    borderRadius: '20px',
+                    background: 'linear-gradient(135deg, #0ea5e9 0%, #22d3ee 50%, #10b981 100%)',
                     mb: 2,
-                    boxShadow: '0 8px 24px rgba(33, 150, 243, 0.4)',
+                    boxShadow: '0 14px 34px rgba(14,165,233,0.35)',
                   }}
                 >
                   <Typography
@@ -292,8 +276,8 @@ const AuthLayout: React.FC = () => {
                     component="h1"
                     sx={{
                       fontWeight: 800,
-                      color: '#fff',
-                      letterSpacing: '0.5px',
+                      color: '#e0f2fe',
+                      letterSpacing: '0.6px',
                     }}
                   >
                     Service SAV
@@ -302,8 +286,8 @@ const AuthLayout: React.FC = () => {
                 <Typography
                   variant="body1"
                   sx={{
-                    color: 'rgba(255, 255, 255, 0.6)',
-                    fontWeight: 500,
+                    color: 'rgba(226, 232, 240, 0.72)',
+                    fontWeight: 600,
                   }}
                 >
                   Gestion des réclamations & interventions
@@ -337,7 +321,7 @@ const AuthLayout: React.FC = () => {
           <Typography
             variant="body2"
             sx={{
-              color: 'rgba(100, 181, 246, 0.6)',
+              color: 'rgba(148, 163, 184, 0.8)',
               fontWeight: 500,
             }}
           >

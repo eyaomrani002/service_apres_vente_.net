@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace InterventionAPI.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate : Migration
+    public partial class initial : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -35,6 +35,28 @@ namespace InterventionAPI.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Interventions", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Techniciens",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Nom = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: false),
+                    Email = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
+                    Telephone = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: true),
+                    Zone = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
+                    Disponibilite = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false, defaultValue: "Disponible"),
+                    IsActif = table.Column<bool>(type: "bit", nullable: false),
+                    Competences = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
+                    UserId = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
+                    DateCreation = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETUTCDATE()"),
+                    DateMaj = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETUTCDATE()")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Techniciens", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -74,6 +96,15 @@ namespace InterventionAPI.Migrations
                 {
                     { 1, 45.00m, 15.50m, new DateTime(2024, 1, 20, 15, 30, 0, 0, DateTimeKind.Unspecified), new DateTime(2024, 1, 20, 14, 0, 0, 0, DateTimeKind.Unspecified), "Intervention pour réparer un robinet qui fuit", false, "Joint usé à remplacer", 1, "Remplacement du joint défectueux", "Terminée", 101, "Jean Dupont" },
                     { 2, null, null, null, new DateTime(2024, 2, 10, 10, 0, 0, 0, DateTimeKind.Unspecified), "Diagnostic du radiateur", true, "", 2, "", "Planifiée", 102, "Marie Martin" }
+                });
+
+            migrationBuilder.InsertData(
+                table: "Techniciens",
+                columns: new[] { "Id", "Competences", "DateCreation", "DateMaj", "Disponibilite", "Email", "IsActif", "Nom", "Telephone", "UserId", "Zone" },
+                values: new object[,]
+                {
+                    { 101, null, new DateTime(2025, 12, 27, 18, 57, 38, 243, DateTimeKind.Utc).AddTicks(6307), new DateTime(2025, 12, 27, 18, 57, 38, 243, DateTimeKind.Utc).AddTicks(6308), "Disponible", "jean.dupont@example.com", true, "Jean Dupont", "0102030405", null, "Nord" },
+                    { 102, null, new DateTime(2025, 12, 27, 18, 57, 38, 243, DateTimeKind.Utc).AddTicks(6310), new DateTime(2025, 12, 27, 18, 57, 38, 243, DateTimeKind.Utc).AddTicks(6311), "Disponible", "marie.martin@example.com", true, "Marie Martin", "0607080910", null, "Sud" }
                 });
 
             migrationBuilder.InsertData(
@@ -127,6 +158,21 @@ namespace InterventionAPI.Migrations
                 name: "IX_Interventions_TechnicienId",
                 table: "Interventions",
                 column: "TechnicienId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Techniciens_Disponibilite",
+                table: "Techniciens",
+                column: "Disponibilite");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Techniciens_Email",
+                table: "Techniciens",
+                column: "Email");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Techniciens_UserId",
+                table: "Techniciens",
+                column: "UserId");
         }
 
         /// <inheritdoc />
@@ -134,6 +180,9 @@ namespace InterventionAPI.Migrations
         {
             migrationBuilder.DropTable(
                 name: "Factures");
+
+            migrationBuilder.DropTable(
+                name: "Techniciens");
 
             migrationBuilder.DropTable(
                 name: "Interventions");

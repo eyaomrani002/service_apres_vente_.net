@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+using InterventionAPI.Models;
 
 namespace InterventionAPI.Models.Repositories
 {
@@ -45,6 +46,16 @@ namespace InterventionAPI.Models.Repositories
         IQueryable<Intervention> GetAllInterventionsQueryable();
         IQueryable<Facture> GetAllFacturesQueryable();
 
+        // Techniciens
+        IList<Technicien> GetTechniciens();
+        IList<Technicien> GetTechniciensDisponibles();
+        Technicien? GetTechnicienById(int id);
+        Technicien? GetTechnicienByUserId(string userId);
+        Technicien AddTechnicien(Technicien technicien);
+        Technicien? UpdateTechnicien(Technicien technicien);
+        void DeleteTechnicien(int id);
+        Technicien? SetDisponibilite(int id, string disponibilite);
+
         // Recherche avancée
         IQueryable<Intervention> AdvancedInterventionSearch(
             string searchTerm = null,
@@ -72,6 +83,7 @@ namespace InterventionAPI.Models.Repositories
         // Méthodes utilitaires
         bool InterventionExists(int id);
         bool FactureExists(int id);
+        bool TechnicienExists(int id);
         int CountInterventions();
         int CountFactures();
         int CountInterventionsByStatut(string statut);

@@ -46,9 +46,15 @@ const FactureDetailsDialog: React.FC<Props> = ({ open, facture, onClose }) => {
     new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
 
   return (
-    <StyledDialog open={open} onClose={onClose} fullWidth>
-      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+    <StyledDialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      disablePortal
+      container={() => document.getElementById('root') as HTMLElement | null || undefined}
+    >
+      <DialogTitle component="div" sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h6" component="div" sx={{ fontWeight: 700 }}>
           Détail facture {facture.numeroFacture}
         </Typography>
         <IconButton onClick={onClose}>

@@ -55,6 +55,18 @@ namespace NotificationAPI.Models.Repositories
                 existing.Subject = notification.Subject;
                 existing.Message = notification.Message;
                 existing.Status = notification.Status;
+                existing.Read = notification.Read;
+                _context.SaveChanges();
+            }
+            return existing;
+        }
+
+        public Notification? MarkRead(Guid id)
+        {
+            var existing = _context.Notifications.Find(id);
+            if (existing != null && !existing.Read)
+            {
+                existing.Read = true;
                 _context.SaveChanges();
             }
             return existing;

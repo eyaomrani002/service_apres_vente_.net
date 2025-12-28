@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Autocomplete,
@@ -16,7 +16,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { addRoleToUser, getUsers } from '../../services/userService';
+import { addRoleToUser, getUsers, removeRoleFromUser } from '../../services/userService';
 import type { AppUser } from '../../types/user';
 
 type RoleMessage = {
@@ -30,9 +30,10 @@ const UsersPage: React.FC = () => {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
-  const [newRole, setNewRole] = useState('');
+  const [newRoles, setNewRoles] = useState<string[]>([]);
   const [roleMessage, setRoleMessage] = useState<RoleMessage | null>(null);
   const [isAssigningRole, setIsAssigningRole] = useState(false);
+  const [removingRoleKey, setRemovingRoleKey] = useState<string | null>(null);
 
   const getErrorMessage = useCallback((err: unknown, fallback: string) => {
     return err instanceof Error ? err.message : fallback;
@@ -56,14 +57,20 @@ const UsersPage: React.FC = () => {
     loadUsers();
   }, [loadUsers]);
 
+  const availableRoles = useMemo(() => {
+    const set = new Set<string>();
+    users.forEach((u) => u.roles?.forEach((r) => set.add(r)));
+    return Array.from(set).sort();
+  }, [users]);
+
   const handleAddRole = async () => {
     if (!selectedUser) {
       setRoleMessage({ severity: 'error', text: 'Sélectionnez un utilisateur.' });
       return;
     }
 
-    if (!newRole.trim()) {
-      setRoleMessage({ severity: 'error', text: 'Indiquez le nom du rôle à ajouter.' });
+    if (newRoles.length === 0) {
+      setRoleMessage({ severity: 'error', text: 'Choisissez au moins un rôle à ajouter.' });
       return;
     }
 
@@ -72,12 +79,27 @@ const UsersPage: React.FC = () => {
     const targetUser = selectedUser;
 
     try {
-      const message = await addRoleToUser(targetUser.id, newRole.trim());
+      const rolesToAdd = newRoles.filter(
+        (r) => !targetUser.roles.some((existing) => existing.toLowerCase() === r.toLowerCase())
+      );
+
+      if (rolesToAdd.length === 0) {
+        setRoleMessage({ severity: 'error', text: 'Tous ces rôles sont déjà attribués.' });
+        setIsAssigningRole(false);
+        return;
+      }
+
+      const results = [] as string[];
+      for (const role of rolesToAdd) {
+        const message = await addRoleToUser(targetUser.id, role);
+        if (message) results.push(message);
+      }
+
       setRoleMessage({
         severity: 'success',
-        text: message || 'Rôle ajouté avec succès.',
+        text: results.join(' ') || 'Rôles ajoutés avec succès.',
       });
-      setNewRole('');
+      setNewRoles([]);
       const refreshed = await loadUsers();
       const focusedUser = refreshed.find((item) => item.id === targetUser.id) ?? null;
       setSelectedUser(focusedUser);
@@ -87,6 +109,25 @@ const UsersPage: React.FC = () => {
       console.error(err);
     } finally {
       setIsAssigningRole(false);
+    }
+  };
+
+  const handleRemoveRole = async (user: AppUser, role: string) => {
+    setRoleMessage(null);
+    const key = `${user.id}-${role}`;
+    setRemovingRoleKey(key);
+    try {
+      const message = await removeRoleFromUser(user.id, role);
+      setRoleMessage({ severity: 'success', text: message || 'Rôle supprimé avec succès.' });
+      const refreshed = await loadUsers();
+      const focusedUser = refreshed.find((item) => item.id === user.id) ?? null;
+      setSelectedUser(focusedUser);
+    } catch (err) {
+      const message = getErrorMessage(err, 'Impossible de supprimer ce rôle.');
+      setRoleMessage({ severity: 'error', text: message });
+      console.error(err);
+    } finally {
+      setRemovingRoleKey(null);
     }
   };
 
@@ -128,20 +169,26 @@ const UsersPage: React.FC = () => {
               <TextField {...params} label="Utilisateur cible" placeholder="Choisir un utilisateur" />
             )}
           />
-          <TextField
-            label="Rôle"
-            placeholder="Ex : Admin, Support"
-            value={newRole}
-            onChange={(event) => setNewRole(event.target.value)}
-            sx={{ minWidth: 220, flex: 1 }}
-            error={Boolean(
-              selectedUser && newRole.trim() && selectedUser.roles.some((r) => r.toLowerCase() === newRole.trim().toLowerCase())
-            )}
-            helperText={
-              selectedUser && newRole.trim() && selectedUser.roles.some((r) => r.toLowerCase() === newRole.trim().toLowerCase())
-                ? 'Ce rôle est déjà attribué à cet utilisateur.'
-                : null
+          <Autocomplete
+            multiple
+            options={availableRoles}
+            value={newRoles}
+            onChange={(_, value) => setNewRoles(value)}
+            renderTags={(value, getTagProps) =>
+              value.map((option, index) => (
+                <Chip variant="outlined" label={option} {...getTagProps({ index })} />
+              ))
             }
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Rôles"
+                placeholder={availableRoles.length ? 'Sélectionner' : 'Aucun rôle connu'}
+              />
+            )}
+            sx={{ minWidth: 220, flex: 1 }}
+            disableCloseOnSelect
+            clearOnBlur={false}
           />
           <Button
             variant="contained"
@@ -149,9 +196,7 @@ const UsersPage: React.FC = () => {
             disabled={
               isAssigningRole ||
               !selectedUser ||
-              !newRole.trim() ||
-              (selectedUser && newRole.trim() &&
-                selectedUser.roles.some((r) => r.toLowerCase() === newRole.trim().toLowerCase()))
+              newRoles.length === 0
             }
           >
             {isAssigningRole ? 'Ajout en cours…' : 'Ajouter le rôle'}
@@ -202,7 +247,14 @@ const UsersPage: React.FC = () => {
                     <Stack direction="row" spacing={1} flexWrap="wrap">
                       {user.roles && user.roles.length > 0 ? (
                         user.roles.map((role) => (
-                          <Chip key={`${user.id}-${role}`} label={role} color="primary" size="small" />
+                          <Chip
+                            key={`${user.id}-${role}`}
+                            label={role}
+                            color="primary"
+                            size="small"
+                            onDelete={() => handleRemoveRole(user, role)}
+                            disabled={removingRoleKey === `${user.id}-${role}`}
+                          />
                         ))
                       ) : (
                         <Typography variant="caption" color="text.secondary">

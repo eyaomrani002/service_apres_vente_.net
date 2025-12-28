@@ -219,6 +219,96 @@ namespace InterventionAPI.Migrations
                         });
                 });
 
+            modelBuilder.Entity("InterventionAPI.Models.Technicien", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Competences")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("DateCreation")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<DateTime>("DateMaj")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("Disponibilite")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("Disponible");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<bool>("IsActif")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Nom")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("Telephone")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("UserId")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("Zone")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Disponibilite");
+
+                    b.HasIndex("Email");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Techniciens");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 101,
+                            DateCreation = new DateTime(2025, 12, 27, 18, 57, 38, 243, DateTimeKind.Utc).AddTicks(6307),
+                            DateMaj = new DateTime(2025, 12, 27, 18, 57, 38, 243, DateTimeKind.Utc).AddTicks(6308),
+                            Disponibilite = "Disponible",
+                            Email = "jean.dupont@example.com",
+                            IsActif = true,
+                            Nom = "Jean Dupont",
+                            Telephone = "0102030405",
+                            Zone = "Nord"
+                        },
+                        new
+                        {
+                            Id = 102,
+                            DateCreation = new DateTime(2025, 12, 27, 18, 57, 38, 243, DateTimeKind.Utc).AddTicks(6310),
+                            DateMaj = new DateTime(2025, 12, 27, 18, 57, 38, 243, DateTimeKind.Utc).AddTicks(6311),
+                            Disponibilite = "Disponible",
+                            Email = "marie.martin@example.com",
+                            IsActif = true,
+                            Nom = "Marie Martin",
+                            Telephone = "0607080910",
+                            Zone = "Sud"
+                        });
+                });
+
             modelBuilder.Entity("InterventionAPI.Models.Facture", b =>
                 {
                     b.HasOne("InterventionAPI.Models.Intervention", "Intervention")

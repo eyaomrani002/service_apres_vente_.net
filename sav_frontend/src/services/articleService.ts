@@ -1,28 +1,45 @@
+// services/articleService.ts
 import { Article, ArticleStats } from '../types/article';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://localhost:7076/apigateway';
 const ARTICLE_BASE = import.meta.env.VITE_ARTICLE_BASE_URL || `${API_BASE}/articles`;
-const ARTICLE_UPLOAD_BASE = import.meta.env.VITE_ARTICLE_UPLOAD_BASE_URL || ARTICLE_BASE;
 
 async function handleResponse(res: Response) {
   if (res.status === 401) {
-    throw new Error('Unauthorized');
+    throw new Error('Non autorisé - Veuillez vous reconnecter');
   }
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || res.statusText || 'HTTP error');
+    let errorMessage = text || res.statusText || `Erreur HTTP ${res.status}`;
+    
+    try {
+      const errorJson = JSON.parse(text);
+      errorMessage = errorJson.message || errorJson.title || errorMessage;
+    } catch {
+      // Garder le message texte
+    }
+    
+    throw new Error(errorMessage);
   }
   return res.status === 204 ? null : res.json();
 }
 
-function getAuthHeaders(): Record<string, string> {
+function getAuthHeaders(contentType = 'application/json'): Record<string, string> {
   const headers: Record<string, string> = {};
+  
+  if (contentType !== 'multipart/form-data') {
+    headers['Content-Type'] = contentType;
+  }
+  
   try {
     const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
   } catch (e) {
-    console.warn('Failed to get auth token', e);
+    console.warn('Erreur lors de la récupération du token', e);
   }
+  
   return headers;
 }
 
@@ -59,11 +76,23 @@ export const articleService = {
     return handleResponse(res);
   },
   
-  advancedSearch: async (params: Record<string, any>): Promise<Article[]> => {
+  advancedSearch: async (params: {
+    searchTerm?: string;
+    type?: string;
+    prixMin?: number;
+    prixMax?: number;
+    enStock?: boolean;
+    sousGarantie?: boolean;
+    sortBy?: string;
+  }): Promise<Article[]> => {
     const query = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== '') query.append(k, String(v));
+    
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        query.append(key, String(value));
+      }
     });
+    
     const res = await fetch(`${ARTICLE_BASE}/advanced?${query.toString()}`, { 
       headers: getAuthHeaders(),
       credentials: 'include'
@@ -72,35 +101,50 @@ export const articleService = {
   },
   
   create: async (article: Partial<Article>): Promise<Article> => {
+    // Préparer l'objet pour le backend
+    const articleData = {
+      ...article,
+      // S'assurer que les dates sont au bon format
+      dateAchat: article.dateAchat ? new Date(article.dateAchat).toISOString() : new Date().toISOString(),
+      // Les booléens doivent être envoyés comme tels
+      estEnStock: article.estEnStock ?? true,
+    };
+    
     const res = await fetch(`${ARTICLE_BASE}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: getAuthHeaders(),
+      credentials: 'include',
+      body: JSON.stringify(articleData),
+    });
+    
+    const created = await handleResponse(res);
+    
+    // Si on a une image dans l'article, il faut l'uploader séparément
+    // Note: Vous avez déjà une méthode uploadImage séparée
+    return created;
+  },
+  
+  update: async (id: number, article: Partial<Article>): Promise<Article> => {
+    const res = await fetch(`${ARTICLE_BASE}/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
       credentials: 'include',
       body: JSON.stringify(article),
     });
     return handleResponse(res);
   },
   
-  update: async (id: number, article: Partial<Article>): Promise<Article> => {
-    const res = await fetch(`${ARTICLE_BASE}/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-      credentials: 'include',
-      body: JSON.stringify(article),
-    });
-    return handleResponse(res);
-  },
-
   uploadImage: async (id: number, file: File): Promise<{ url: string }> => {
     const formData = new FormData();
     formData.append('file', file);
-
-    const res = await fetch(`${ARTICLE_UPLOAD_BASE}/${id}/upload-image`, {
+    
+    const res = await fetch(`${ARTICLE_BASE}/${id}/upload-image`, {
       method: 'POST',
-      headers: getAuthHeaders(),
+      headers: getAuthHeaders('multipart/form-data'),
       credentials: 'include',
       body: formData,
     });
+    
     return handleResponse(res);
   },
   

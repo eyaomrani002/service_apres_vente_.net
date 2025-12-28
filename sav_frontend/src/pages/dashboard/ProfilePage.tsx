@@ -1,3 +1,4 @@
+// pages/dashboard/ProfilePage.tsx - Version complète corrigée
 import React, { useState, useEffect } from 'react';
 import {
   Box,
@@ -14,6 +15,12 @@ import {
   IconButton,
   Switch,
   FormControlLabel,
+  Alert,
+  InputAdornment,
+  IconButton as MuiIconButton,
+  LinearProgress,
+  CircularProgress,
+  Snackbar,
 } from '@mui/material';
 import {
   Edit,
@@ -26,8 +33,14 @@ import {
   Phone,
   LocationOn,
   Settings,
+  Visibility,
+  VisibilityOff,
+  CheckCircle,
+  Error as ErrorIcon,
+  Warning,
 } from '@mui/icons-material';
 import PageTitle from '../../components/common/PageTitle';
+import authService from '../../services/authService';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -43,33 +56,209 @@ const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => {
   );
 };
 
+const PasswordField = ({ 
+  label, 
+  value, 
+  onChange, 
+  error, 
+  helperText,
+  showStrength = false 
+}: {
+  label: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  error: boolean;
+  helperText: string;
+  showStrength?: boolean;
+}) => {
+  const [showPassword, setShowPassword] = useState(false);
+  
+  const calculatePasswordStrength = (password: string) => {
+    if (!password) return 0;
+    let strength = 0;
+    if (password.length >= 8) strength += 25;
+    if (/[A-Z]/.test(password)) strength += 25;
+    if (/[0-9]/.test(password)) strength += 25;
+    if (/[^A-Za-z0-9]/.test(password)) strength += 25;
+    return strength;
+  };
+  
+  const strength = calculatePasswordStrength(value);
+  const strengthColor = strength < 50 ? 'error' : strength < 75 ? 'warning' : 'success';
+  
+  return (
+    <Box>
+      <TextField
+        fullWidth
+        type={showPassword ? 'text' : 'password'}
+        label={label}
+        value={value}
+        onChange={onChange}
+        error={error}
+        helperText={helperText}
+        InputProps={{
+          endAdornment: (
+            <InputAdornment position="end">
+              <MuiIconButton
+                onClick={() => setShowPassword(!showPassword)}
+                edge="end"
+              >
+                {showPassword ? <VisibilityOff /> : <Visibility />}
+              </MuiIconButton>
+            </InputAdornment>
+          ),
+        }}
+        variant="outlined"
+      />
+      {showStrength && value && (
+        <Box sx={{ mt: 1 }}>
+          <LinearProgress 
+            variant="determinate" 
+            value={strength} 
+            color={strengthColor as any}
+            sx={{ height: 4, borderRadius: 2 }}
+          />
+          <Typography variant="caption" sx={{ color: `${strengthColor}.main` }}>
+            Force: {strength}% {strength < 50 ? '(Faible)' : strength < 75 ? '(Moyen)' : '(Fort)'}
+          </Typography>
+        </Box>
+      )}
+    </Box>
+  );
+};
+
+// Composant pour vérifier l'état de l'API
+const ApiStatusCheck = () => {
+  const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [lastCheck, setLastCheck] = useState<Date>(new Date());
+  
+  const checkApiStatus = async () => {
+    try {
+      const token = authService.getToken();
+      
+      const response = await fetch('https://localhost:7076/apigateway/auth/validate', {
+        method: 'GET',
+        headers: token ? {
+          'Authorization': `Bearer ${token}`
+        } : {},
+        mode: 'cors',
+        credentials: 'include'
+      });
+      
+      if (response.ok || response.status === 401) {
+        // 401 est OK car cela signifie que l'API répond
+        setApiStatus('online');
+      } else {
+        setApiStatus('offline');
+      }
+    } catch (error) {
+      console.error('API status check failed:', error);
+      setApiStatus('offline');
+    } finally {
+      setLastCheck(new Date());
+    }
+  };
+  
+  useEffect(() => {
+    checkApiStatus();
+    const interval = setInterval(checkApiStatus, 30000); // Vérifier toutes les 30 secondes
+    return () => clearInterval(interval);
+  }, []);
+  
+  if (apiStatus === 'checking') {
+    return (
+      <Alert 
+        severity="info"
+        icon={<CircularProgress size={20} />}
+        sx={{ mb: 2 }}
+      >
+        Vérification de la connexion API...
+      </Alert>
+    );
+  }
+  
+  return (
+    <Alert 
+      severity={apiStatus === 'online' ? 'success' : 'warning'}
+      icon={apiStatus === 'online' ? <CheckCircle /> : <Warning />}
+      sx={{ mb: 2 }}
+    >
+      {apiStatus === 'online' ? (
+        <>
+          ✅ API Gateway connecté
+          <Typography variant="caption" display="block">
+            Dernière vérification: {lastCheck.toLocaleTimeString()}
+          </Typography>
+        </>
+      ) : (
+        <>
+          ⚠️ API Gateway déconnecté
+          <Typography variant="caption" display="block">
+            Vérifiez que les services sont en cours d'exécution
+          </Typography>
+        </>
+      )}
+    </Alert>
+  );
+};
+
 const ProfilePage: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
+  const [passwordChangeSuccess, setPasswordChangeSuccess] = useState(false);
+  const [passwordChangeError, setPasswordChangeError] = useState<string | null>(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error' | 'info';
+  }>({
+    open: false,
+    message: '',
+    severity: 'info'
+  });
+  
+  // Données du profil
   const [profileData, setProfileData] = useState({
-    firstName: 'Jean',
-    lastName: 'Dupont',
-    email: 'jean.dupont@example.com',
-    phone: '+33 6 12 34 56 78',
-    address: '123 Rue de la République',
-    city: 'Paris',
-    postalCode: '75001',
-    jobTitle: 'Responsable SAV',
-    department: 'Service Après-Vente',
-    hireDate: '15/03/2020',
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    address: '',
+    city: '',
+    postalCode: '',
+    jobTitle: '',
+    department: '',
+    hireDate: '',
+  });
+
+  // Données de changement de mot de passe
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+
+  const [passwordErrors, setPasswordErrors] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
   });
 
   const [settings, setSettings] = useState({
     emailNotifications: true,
     pushNotifications: false,
-    twoFactorAuth: true,
+    twoFactorAuth: false,
     marketingEmails: false,
     darkMode: false,
   });
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    void event; // Mark event as used to avoid unused variable TS6133 when not needed
+    event;
     setTabValue(newValue);
+    // Réinitialiser les messages d'erreur quand on change d'onglet
+    setPasswordChangeError(null);
+    setPasswordChangeSuccess(false);
   };
 
   const handleEditToggle = () => {
@@ -85,41 +274,199 @@ const ProfilePage: React.FC = () => {
     });
   };
 
+  const handlePasswordChange = (field: string) => (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    setPasswordData({
+      ...passwordData,
+      [field]: event.target.value,
+    });
+    
+    // Effacer l'erreur quand l'utilisateur tape
+    if (passwordErrors[field as keyof typeof passwordErrors]) {
+      setPasswordErrors({
+        ...passwordErrors,
+        [field]: '',
+      });
+    }
+    
+    // Effacer les messages de succès/erreur
+    setPasswordChangeSuccess(false);
+    setPasswordChangeError(null);
+  };
+
   const handleSettingToggle = (field: string) => (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
     setSettings({
       ...settings,
-      [field]: event.target.checked,
+      [field]: event.checked,
     });
   };
 
-  const handleSave = () => {
-    // Ici, vous ajouterez la logique pour sauvegarder les données
-    console.log('Saving profile:', profileData);
-    setIsEditing(false);
+  const handleSave = async () => {
+    try {
+      // Ici vous ajouteriez l'appel API pour sauvegarder le profil
+      await authService.updateProfile({
+        firstName: profileData.firstName,
+        lastName: profileData.lastName,
+        phoneNumber: profileData.phone,
+      });
+      
+      setIsEditing(false);
+      setSnackbar({
+        open: true,
+        message: 'Profil mis à jour avec succès',
+        severity: 'success'
+      });
+    } catch (error: any) {
+      setSnackbar({
+        open: true,
+        message: `Erreur: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  };
+
+  const validatePasswordChange = () => {
+    const newErrors = {
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+    };
+    
+    let isValid = true;
+    
+    if (!passwordData.currentPassword) {
+      newErrors.currentPassword = 'Mot de passe actuel requis';
+      isValid = false;
+    }
+    
+    if (!passwordData.newPassword) {
+      newErrors.newPassword = 'Nouveau mot de passe requis';
+      isValid = false;
+    } else if (passwordData.newPassword.length < 6) {
+      newErrors.newPassword = 'Minimum 6 caractères';
+      isValid = false;
+    }
+    
+    if (!passwordData.confirmPassword) {
+      newErrors.confirmPassword = 'Confirmation requise';
+      isValid = false;
+    } else if (passwordData.newPassword !== passwordData.confirmPassword) {
+      newErrors.confirmPassword = 'Les mots de passe ne correspondent pas';
+      isValid = false;
+    }
+    
+    setPasswordErrors(newErrors);
+    return isValid;
+  };
+
+  const handlePasswordSubmit = async () => {
+    if (!validatePasswordChange()) {
+      return;
+    }
+    
+    try {
+      setPasswordChangeError(null);
+      setIsChangingPassword(true);
+      
+      console.log('Attempting password change...');
+      
+      await authService.changePassword({
+        oldPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword,
+        confirmPassword: passwordData.confirmPassword,
+      });
+      
+      // Réinitialiser les champs
+      setPasswordData({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+      
+      // Afficher message de succès
+      setPasswordChangeSuccess(true);
+      setSnackbar({
+        open: true,
+        message: 'Mot de passe changé avec succès',
+        severity: 'success'
+      });
+      
+      // Effacer le message après 5 secondes
+      setTimeout(() => {
+        setPasswordChangeSuccess(false);
+      }, 5000);
+      
+    } catch (error: any) {
+      console.error('Password change failed:', error);
+      
+      let errorMessage = error.message || 'Erreur lors du changement de mot de passe';
+      
+      // Messages d'erreur plus conviviaux
+      if (errorMessage.includes('ERR_EMPTY_RESPONSE') || 
+          errorMessage.includes('Le serveur n\'a pas répondu')) {
+        errorMessage = 'Le serveur d\'authentification ne répond pas. ' +
+                      'Veuillez vérifier que AuthAPI est en cours d\'exécution sur le port 7011.';
+      } else if (errorMessage.includes('ERR_NETWORK')) {
+        errorMessage = 'Erreur réseau. Vérifiez votre connexion internet.';
+      } else if (errorMessage.includes('401')) {
+        errorMessage = 'Session expirée. Veuillez vous reconnecter.';
+      } else if (errorMessage.includes('ancien mot de passe')) {
+        errorMessage = 'L\'ancien mot de passe est incorrect.';
+      }
+      
+      setPasswordChangeError(errorMessage);
+      setSnackbar({
+        open: true,
+        message: errorMessage,
+        severity: 'error'
+      });
+      
+      // Effacer le message d'erreur après 10 secondes
+      setTimeout(() => {
+        setPasswordChangeError(null);
+      }, 10000);
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
   };
 
   useEffect(() => {
-    // Try to load logged-in user from localStorage and populate the form
-    try {
-      const raw = localStorage.getItem('user');
-      if (raw) {
-        const u = JSON.parse(raw);
-        const name = (u.name || '').trim();
-        const [firstName, ...rest] = name ? name.split(' ') : [];
-        const lastName = rest.join(' ');
-        setProfileData(prev => ({
-          ...prev,
-          firstName: firstName || prev.firstName,
-          lastName: lastName || prev.lastName,
-          email: u.email || prev.email,
-          // optionally map other known fields if your user object contains them
-        }));
+    // Charger les données de l'utilisateur
+    const loadUserData = async () => {
+      try {
+        const user = authService.getCurrentUser();
+        if (user) {
+          setProfileData(prev => ({
+            ...prev,
+            firstName: user.firstName || prev.firstName,
+            lastName: user.lastName || prev.lastName,
+            email: user.email || prev.email,
+          }));
+        }
+        
+        // Optionnel: charger le profil complet depuis l'API
+        try {
+          const profile = await authService.getProfile();
+          setProfileData(prev => ({
+            ...prev,
+            ...profile,
+          }));
+        } catch (profileError) {
+          console.log('Could not load full profile:', profileError);
+        }
+      } catch (e) {
+        console.error('Error loading user data:', e);
       }
-    } catch (e) {
-      // ignore parse errors
-    }
+    };
+    
+    loadUserData();
   }, []);
 
   return (
@@ -128,6 +475,8 @@ const ProfilePage: React.FC = () => {
         title="Mon profil"
         subtitle="Gérez vos informations personnelles et paramètres"
       />
+      
+      <ApiStatusCheck />
 
       <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: '1fr', md: '1fr 2fr' } }}>
         {/* Sidebar */}
@@ -144,7 +493,7 @@ const ProfilePage: React.FC = () => {
                     mb: 2,
                   }}
                 >
-                  JD
+                  {profileData.firstName?.charAt(0)}{profileData.lastName?.charAt(0)}
                 </Avatar>
                 <IconButton
                   sx={{
@@ -164,11 +513,11 @@ const ProfilePage: React.FC = () => {
               </Typography>
 
               <Typography variant="body2" color="text.secondary" gutterBottom>
-                {profileData.jobTitle}
+                {profileData.jobTitle || 'Utilisateur'}
               </Typography>
 
               <Typography variant="caption" color="text.secondary">
-                Membre depuis {profileData.hireDate}
+                {profileData.hireDate ? `Membre depuis ${profileData.hireDate}` : 'Membre'}
               </Typography>
 
               <Divider sx={{ my: 3 }} />
@@ -179,17 +528,21 @@ const ProfilePage: React.FC = () => {
                   <Typography variant="body2">{profileData.email}</Typography>
                 </Box>
 
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <Phone sx={{ mr: 2, fontSize: 20, color: 'text.secondary' }} />
-                  <Typography variant="body2">{profileData.phone}</Typography>
-                </Box>
+                {profileData.phone && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <Phone sx={{ mr: 2, fontSize: 20, color: 'text.secondary' }} />
+                    <Typography variant="body2">{profileData.phone}</Typography>
+                  </Box>
+                )}
 
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <LocationOn sx={{ mr: 2, fontSize: 20, color: 'text.secondary' }} />
-                  <Typography variant="body2">
-                    {profileData.address}, {profileData.city} {profileData.postalCode}
-                  </Typography>
-                </Box>
+                {profileData.address && (
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <LocationOn sx={{ mr: 2, fontSize: 20, color: 'text.secondary' }} />
+                    <Typography variant="body2">
+                      {profileData.address}, {profileData.city} {profileData.postalCode}
+                    </Typography>
+                  </Box>
+                )}
               </Box>
             </CardContent>
           </Card>
@@ -228,6 +581,7 @@ const ProfilePage: React.FC = () => {
                     value={profileData.firstName}
                     onChange={handleInputChange('firstName')}
                     disabled={!isEditing}
+                    variant="outlined"
                   />
                 </Box>
                 <Box>
@@ -237,16 +591,19 @@ const ProfilePage: React.FC = () => {
                     value={profileData.lastName}
                     onChange={handleInputChange('lastName')}
                     disabled={!isEditing}
+                    variant="outlined"
                   />
                 </Box>
-                <Box>
+                <Box sx={{ gridColumn: '1 / -1' }}>
                   <TextField
                     fullWidth
                     label="Email"
                     type="email"
                     value={profileData.email}
                     onChange={handleInputChange('email')}
-                    disabled={!isEditing}
+                    disabled
+                    variant="outlined"
+                    helperText="L'email ne peut pas être modifié"
                   />
                 </Box>
                 <Box>
@@ -256,15 +613,7 @@ const ProfilePage: React.FC = () => {
                     value={profileData.phone}
                     onChange={handleInputChange('phone')}
                     disabled={!isEditing}
-                  />
-                </Box>
-                <Box sx={{ gridColumn: '1 / -1' }}>
-                  <TextField
-                    fullWidth
-                    label="Adresse"
-                    value={profileData.address}
-                    onChange={handleInputChange('address')}
-                    disabled={!isEditing}
+                    variant="outlined"
                   />
                 </Box>
                 <Box>
@@ -274,6 +623,7 @@ const ProfilePage: React.FC = () => {
                     value={profileData.city}
                     onChange={handleInputChange('city')}
                     disabled={!isEditing}
+                    variant="outlined"
                   />
                 </Box>
                 <Box>
@@ -283,6 +633,19 @@ const ProfilePage: React.FC = () => {
                     value={profileData.postalCode}
                     onChange={handleInputChange('postalCode')}
                     disabled={!isEditing}
+                    variant="outlined"
+                  />
+                </Box>
+                <Box sx={{ gridColumn: '1 / -1' }}>
+                  <TextField
+                    fullWidth
+                    label="Adresse"
+                    value={profileData.address}
+                    onChange={handleInputChange('address')}
+                    disabled={!isEditing}
+                    variant="outlined"
+                    multiline
+                    rows={2}
                   />
                 </Box>
               </Box>
@@ -293,6 +656,18 @@ const ProfilePage: React.FC = () => {
               <Typography variant="h6" gutterBottom>
                 Sécurité du compte
               </Typography>
+              
+              {passwordChangeSuccess && (
+                <Alert severity="success" sx={{ mb: 3 }} icon={<CheckCircle />}>
+                  Mot de passe changé avec succès !
+                </Alert>
+              )}
+              
+              {passwordChangeError && (
+                <Alert severity="error" sx={{ mb: 3 }} icon={<ErrorIcon />}>
+                  {passwordChangeError}
+                </Alert>
+              )}
               
               <Box sx={{ mb: 4 }}>
                 <FormControlLabel
@@ -315,32 +690,42 @@ const ProfilePage: React.FC = () => {
                 </Typography>
                 <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' } }}>
                   <Box sx={{ gridColumn: '1 / -1' }}>
-                    <TextField
-                      fullWidth
-                      type="password"
+                    <PasswordField
                       label="Mot de passe actuel"
-                      disabled
+                      value={passwordData.currentPassword}
+                      onChange={handlePasswordChange('currentPassword')}
+                      error={!!passwordErrors.currentPassword}
+                      helperText={passwordErrors.currentPassword}
                     />
                   </Box>
                   <Box>
-                    <TextField
-                      fullWidth
-                      type="password"
+                    <PasswordField
                       label="Nouveau mot de passe"
-                      disabled
+                      value={passwordData.newPassword}
+                      onChange={handlePasswordChange('newPassword')}
+                      error={!!passwordErrors.newPassword}
+                      helperText={passwordErrors.newPassword}
+                      showStrength={true}
                     />
                   </Box>
                   <Box>
-                    <TextField
-                      fullWidth
-                      type="password"
+                    <PasswordField
                       label="Confirmer le nouveau mot de passe"
-                      disabled
+                      value={passwordData.confirmPassword}
+                      onChange={handlePasswordChange('confirmPassword')}
+                      error={!!passwordErrors.confirmPassword}
+                      helperText={passwordErrors.confirmPassword}
                     />
                   </Box>
                 </Box>
-                <Button variant="contained" sx={{ mt: 2 }} disabled>
-                  Changer le mot de passe
+                <Button 
+                  variant="contained" 
+                  sx={{ mt: 2 }}
+                  onClick={handlePasswordSubmit}
+                  disabled={isChangingPassword}
+                  startIcon={isChangingPassword ? <CircularProgress size={20} /> : null}
+                >
+                  {isChangingPassword ? 'Changement en cours...' : 'Changer le mot de passe'}
                 </Button>
               </Box>
               
@@ -448,6 +833,22 @@ const ProfilePage: React.FC = () => {
           </Paper>
         </Box>
       </Box>
+      
+      {/* Snackbar pour les notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseSnackbar} 
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

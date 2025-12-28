@@ -299,6 +299,7 @@ const ClientsTable: React.FC<Props> = ({ clients, onEdit, onDelete, onView }) =>
                           size="small" 
                           className="edit"
                           onClick={() => onEdit(client)}
+                          disabled={client.isAuthUser}
                         >
                           <Edit fontSize="small" />
                         </ActionButton>
@@ -308,6 +309,7 @@ const ClientsTable: React.FC<Props> = ({ clients, onEdit, onDelete, onView }) =>
                           size="small" 
                           className="delete"
                           onClick={() => onDelete(client.id)}
+                          disabled={client.isAuthUser}
                         >
                           <Delete fontSize="small" />
                         </ActionButton>

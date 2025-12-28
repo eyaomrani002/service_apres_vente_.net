@@ -1,8 +1,11 @@
 // services/interventionService.ts
 import { Intervention, InterventionStats, InterventionFilterParams } from '../types/intervention';
 
-const API_ROOT = (import.meta.env.VITE_INTERVENTION_API_BASE || import.meta.env.VITE_API_BASE_URL || 'https://localhost:7228/api').replace(/\/$/, '');
-const BASE = `${API_ROOT}/interventions`;
+// Utilise la gateway par défaut pour aligner les autres services (clients/réclamations)
+const BASE = (import.meta.env.VITE_INTERVENTION_API_BASE
+  || import.meta.env.VITE_API_GATEWAY_BASE
+  || 'https://localhost:7076/apigateway')
+  .replace(/\/$/, '') + '/interventions';
 
 async function handleResponse(res: Response) {
   if (res.status === 401) throw new Error('Unauthorized');
@@ -66,7 +69,7 @@ export const interventionService = {
     fetchJson('', { method: 'POST', body: JSON.stringify(payload) }),
 
   update: async (id: number, payload: Partial<Intervention>): Promise<Intervention> =>
-    fetchJson(`/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+    fetchJson(`/${id}`, { method: 'PUT', body: JSON.stringify({ ...payload, id }) }),
 
   delete: async (id: number): Promise<void> => fetchJson(`/${id}`, { method: 'DELETE' }),
 

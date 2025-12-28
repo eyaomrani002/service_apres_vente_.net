@@ -11,6 +11,8 @@ namespace NotificationAPI.Models.Repositories
         Notification Update(Notification notification);
         void Delete(Guid id);
 
+        Notification? MarkRead(Guid id);
+
         IList<Notification> GetRecent(int take = 50);
         IList<Notification> FindByRecipient(string recipient);
     }

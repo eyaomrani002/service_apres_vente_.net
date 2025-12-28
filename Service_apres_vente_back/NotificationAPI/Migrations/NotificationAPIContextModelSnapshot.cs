@@ -36,6 +36,11 @@ namespace NotificationAPI.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<bool>("Read")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<string>("Recipient")
                         .IsRequired()
                         .HasMaxLength(200)

@@ -52,3 +52,26 @@ export async function addRoleToUser(userId: string, role: string): Promise<strin
     throw error;
   }
 }
+
+export async function removeRoleFromUser(userId: string, role: string): Promise<string> {
+  try {
+    const response = await axios.post(
+      `${API_BASE}/auth/removerole`,
+      { UserId: userId, Role: role },
+      {
+        headers: {
+          ...getAuthHeaders(),
+        },
+        withCredentials: true,
+      }
+    );
+
+    return response.data?.message ?? 'Rôle retiré avec succès';
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error)) {
+      const message = error.response?.data?.message ?? error.message;
+      throw new Error(message);
+    }
+    throw error;
+  }
+}

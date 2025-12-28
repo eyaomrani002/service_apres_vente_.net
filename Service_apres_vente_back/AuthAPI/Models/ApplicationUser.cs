@@ -22,5 +22,8 @@ namespace AuthAPI.Models
         // Pour le changement de mot de passe
         public DateTime? LastPasswordChange { get; set; }
         public bool PasswordChangeRequired { get; set; } = false;
+
+        // Lien optionnel vers le profil technicien (InterventionAPI)
+        public int? TechnicienId { get; set; }
     }
 }

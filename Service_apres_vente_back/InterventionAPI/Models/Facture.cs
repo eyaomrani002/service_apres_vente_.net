@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 
 namespace InterventionAPI.Models
 {
@@ -51,8 +52,9 @@ namespace InterventionAPI.Models
         [StringLength(1000)]
         public string? DescriptionServices { get; set; }
 
-        // Ajout de [JsonIgnore] pour éviter la référence circulaire
+        // Navigation ignorée pour la validation/binding afin d'éviter l'erreur "Intervention field is required"
         [JsonIgnore]
-        public virtual Intervention Intervention { get; set; } = null!;
+        [ValidateNever]
+        public virtual Intervention? Intervention { get; set; } = null;
     }
 }

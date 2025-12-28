@@ -192,8 +192,15 @@ const InterventionDetailsDialog: React.FC<Props> = ({ open, intervention, onClos
   };
 
   return (
-    <StyledDialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <StyledDialogTitle>
+    <StyledDialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      disablePortal
+      container={() => document.getElementById('root') as HTMLElement | null || undefined}
+    >
+      <StyledDialogTitle component="div">
         <Typography variant="h5" sx={{ fontWeight: 700 }}>
           Détails de l'Intervention #{intervention.id}
         </Typography>
@@ -211,7 +218,6 @@ const InterventionDetailsDialog: React.FC<Props> = ({ open, intervention, onClos
           <Close />
         </IconButton>
       </StyledDialogTitle>
-
       <DialogContent sx={{ p: 4 }}>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>

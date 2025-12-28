@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace AuthAPI.Migrations
 {
     /// <inheritdoc />
-    public partial class intial : Migration
+    public partial class initial : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -39,6 +39,7 @@ namespace AuthAPI.Migrations
                     LockoutEnd = table.Column<DateTime>(type: "datetime2", nullable: true),
                     LastPasswordChange = table.Column<DateTime>(type: "datetime2", nullable: true),
                     PasswordChangeRequired = table.Column<bool>(type: "bit", nullable: false),
+                    TechnicienId = table.Column<int>(type: "int", nullable: true),
                     UserName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
                     NormalizedUserName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
                     Email = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),

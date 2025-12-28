@@ -7,6 +7,12 @@ namespace CalendarAPI.Models
         [Required]
         public Guid TechnicianId { get; set; }
 
+        public Guid? ClientId { get; set; }
+
+        public Guid? TicketId { get; set; }
+
+        public Guid? ReclamationId { get; set; }
+
         [Required]
         public DateTime StartUtc { get; set; }
 
@@ -18,5 +24,8 @@ namespace CalendarAPI.Models
         public string Title { get; set; } = string.Empty;
 
         public string? Notes { get; set; }
+
+        [MaxLength(50)]
+        public string? Status { get; set; }
     }
 }

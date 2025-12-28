@@ -17,6 +17,8 @@ type AuthContextType = {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<{ ok: boolean; message?: string }>;
   logout: () => void;
+  hasRole: (role: string) => boolean;
+  hasAnyRole: (roles: string[]) => boolean;
 };
 
 export const AuthContext = createContext<AuthContextType>({
@@ -25,18 +27,27 @@ export const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
   login: async () => ({ ok: false }),
   logout: () => {},
+  hasRole: () => false,
+  hasAnyRole: () => false,
 });
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const normalizeRoles = (roles?: any): string[] => {
+    if (!roles) return [];
+    if (Array.isArray(roles)) return roles.map((r) => String(r).toLowerCase());
+    return [String(roles).toLowerCase()];
+  };
+
   useEffect(() => {
     const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
     const stored = localStorage.getItem('user');
     if (stored) {
       try {
-        setUser(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        setUser({ ...parsed, roles: normalizeRoles(parsed.roles) });
       } catch {
         setUser(null);
       }
@@ -103,7 +114,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           name: data.username,
           firstName: data.firstName,
           lastName: data.lastName,
-          roles: data.roles || [],
+          roles: normalizeRoles(data.roles || data.role),
           ...data
         };
       }
@@ -123,7 +134,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             name: payload.name || payload.username || payload.sub,
             firstName: payload.firstName,
             lastName: payload.lastName,
-            roles: payload.roles || payload.role || [],
+            roles: normalizeRoles(payload.roles || payload.role),
             ...payload,
           } as User;
         }
@@ -134,9 +145,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         resolvedUser = {
           email: email,
           name: email.split('@')[0],
-          roles: ['Client']
+          roles: ['client']
         };
       }
+
+      resolvedUser.roles = normalizeRoles(resolvedUser.roles);
       
       // Sauvegarder l'utilisateur
       localStorage.setItem('user', JSON.stringify(resolvedUser));
@@ -151,10 +164,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = () => {
+    // try to remove any cart keys related to current user / token / guest
+    try {
+      const storedRaw = localStorage.getItem('user');
+      if (storedRaw) {
+        const storedUser = JSON.parse(storedRaw as string);
+        const cand = storedUser?.id ?? storedUser?.userId ?? storedUser?.uid ?? storedUser?.sub ?? storedUser?.email ?? null;
+        const part = cand == null ? 'guest' : String(cand);
+        const key = `sav_cart_items_${encodeURIComponent(part)}`;
+        localStorage.removeItem(key);
+      }
+
+      // remove token-based fallback key if present
+      const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
+      if (token) {
+        const tokenKey = `sav_cart_items_${encodeURIComponent(token.slice(0, 12))}`;
+        localStorage.removeItem(tokenKey);
+      }
+
+      // always remove generic guest key
+      localStorage.removeItem('sav_cart_items_guest');
+    } catch {}
+
     localStorage.removeItem('accessToken');
     localStorage.removeItem('user');
     setUser(null);
-    
+
     try {
       const base = import.meta.env.VITE_API_BASE_URL || 'https://localhost:7076/apigateway';
       fetch(`${base}/auth/logout`, { 
@@ -170,7 +205,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       loading, 
       isAuthenticated: !!user, 
       login, 
-      logout 
+      logout,
+      hasRole: (role: string) => user?.roles?.includes(role.toLowerCase()) || false,
+      hasAnyRole: (roles: string[]) => roles.some((r) => user?.roles?.includes(String(r).toLowerCase())),
     }}>
       {children}
     </AuthContext.Provider>

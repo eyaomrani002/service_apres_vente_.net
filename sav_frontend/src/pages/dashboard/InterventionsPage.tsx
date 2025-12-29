@@ -84,6 +84,7 @@ const InterventionsPage: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [currentClientId, setCurrentClientId] = useState<number | null>(null);
   const { user } = React.useContext(AuthContext);
+  const [isTechnicien, setIsTechnicien] = useState(false);
 
   type SearchPayload = {
     searchTerm?: string;
@@ -103,6 +104,13 @@ const InterventionsPage: React.FC = () => {
   const load = async () => {
     setLoading(true);
     try {
+      if (isTechnicien && user?.id) {
+        // Filtrer interventions du technicien connecté
+        const data = await interventionService.byTechnicien(Number(user.id));
+        setItems(Array.isArray(data) ? data : []);
+        setStats(null);
+        return;
+      }
       if (!isAdmin && currentClientId) {
         try {
           const scoped = await interventionService.advancedSearch({ clientId: currentClientId } as any);
@@ -131,6 +139,7 @@ const InterventionsPage: React.FC = () => {
     if (user) {
       const roles = (user.roles || user.role || []).map((r: string) => (r.toLowerCase ? r.toLowerCase() : r));
       setIsAdmin(Array.isArray(roles) ? roles.includes('admin') : roles === 'admin');
+      setIsTechnicien(Array.isArray(roles) ? roles.includes('technicien') : roles === 'technicien');
       if (user.id) setCurrentClientId(Number(user.id));
       return;
     }
@@ -141,13 +150,14 @@ const InterventionsPage: React.FC = () => {
         if (parsed?.id) setCurrentClientId(Number(parsed.id));
         const roles = (parsed?.roles || parsed?.role || []).map((r: string) => (r.toLowerCase ? r.toLowerCase() : r));
         setIsAdmin(Array.isArray(roles) ? roles.includes('admin') : roles === 'admin');
+        setIsTechnicien(Array.isArray(roles) ? roles.includes('technicien') : roles === 'technicien');
       }
     } catch {}
   }, [user]);
 
   useEffect(() => { 
     load(); 
-  }, [isAdmin, currentClientId]);
+  }, [isAdmin, isTechnicien, currentClientId]);
 
   // Fonction pour afficher les messages
   const showMessage = (msg: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -517,7 +527,8 @@ const InterventionsPage: React.FC = () => {
             onChangeStatus={handleChangeStatus}
             onGenerateInvoice={handleGenerateInvoice}
           />
-        )}
+        )
+        }
       </ModernPaper>
 
       {/* Formulaire d'intervention */}

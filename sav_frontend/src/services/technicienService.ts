@@ -46,8 +46,30 @@ const fetchJson = async (path: string, init?: RequestInit) => {
 };
 
 export const technicienService = {
-  getAll: async (): Promise<Technicien[]> => fetchJson(''),
-  getDisponibles: async (): Promise<Technicien[]> => fetchJson('/disponibles'),
+  getAll: async (): Promise<Technicien[]> => {
+    const data = await fetchJson('');
+    // Normaliser les compétences
+    return data.map((tech: any) => ({
+      ...tech,
+      competences: tech.competences 
+        ? (typeof tech.competences === 'string' 
+            ? tech.competences.split(',').map((c: string) => c.trim()).filter((c: string) => c)
+            : tech.competences)
+        : []
+    }));
+  },
+  
+  getDisponibles: async (): Promise<Technicien[]> => {
+    const data = await fetchJson('/disponibles');
+    return data.map((tech: any) => ({
+      ...tech,
+      competences: tech.competences 
+        ? (typeof tech.competences === 'string' 
+            ? tech.competences.split(',').map((c: string) => c.trim()).filter((c: string) => c)
+            : tech.competences)
+        : []
+    }));
+  },
   getById: async (id: number): Promise<Technicien> => fetchJson(`/${id}`),
   create: async (payload: Partial<Technicien>): Promise<Technicien> =>
     fetchJson('', { method: 'POST', body: JSON.stringify(payload) }),

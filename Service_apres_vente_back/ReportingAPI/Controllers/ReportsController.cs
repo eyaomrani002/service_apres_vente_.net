@@ -1,6 +1,10 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using ReportingAPI.Models;
 using ReportingAPI.Models.Repositories;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Threading.Tasks;
+using System.IO;
 
 namespace ReportingAPI.Controllers
 {
@@ -10,11 +14,13 @@ namespace ReportingAPI.Controllers
     {
         private readonly IReportRepository _repository;
         private readonly ILogger<ReportsController> _logger;
+        private readonly IHttpClientFactory _httpClientFactory;
 
-        public ReportsController(IReportRepository repository, ILogger<ReportsController> logger)
+        public ReportsController(IReportRepository repository, ILogger<ReportsController> logger, IHttpClientFactory httpClientFactory)
         {
             _repository = repository;
             _logger = logger;
+            _httpClientFactory = httpClientFactory;
         }
 
         [HttpGet]
@@ -235,6 +241,125 @@ namespace ReportingAPI.Controllers
             {
                 _logger.LogError(ex, $"Erreur lors de DELETE /api/reports/{id}");
                 return StatusCode(500, "Erreur serveur");
+            }
+        }
+
+        // GET: api/reports/{id}/pdf
+        [HttpGet("{id}/pdf")]
+        public async Task<IActionResult> GeneratePdf(string id)
+        {
+            try
+            {
+                if (!Guid.TryParse(id, out var reportId))
+                {
+                    return BadRequest("ID de rapport invalide");
+                }
+
+                var report = _repository.GetById(reportId);
+                if (report == null)
+                {
+                    return NotFound($"Rapport avec ID {id} non trouvé");
+                }
+
+                // Récupérer les données client
+                var clientInfo = await GetClientInfoAsync(report.ClientId);
+                // Récupérer les données d'intervention
+                var interventionInfo = await GetInterventionInfoAsync(report.InterventionId);
+                // Récupérer les données technicien
+                var technicianInfo = await GetTechnicianInfoAsync(report.TechnicianId);
+
+                // Générer le PDF
+                var pdfBytes = GeneratePdfContent(report, clientInfo, interventionInfo, technicianInfo);
+                // Retourner le PDF
+                return File(pdfBytes, "application/pdf", $"rapport-{report.Id}.pdf");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Erreur lors de la génération du PDF pour le rapport {id}");
+                return StatusCode(500, "Erreur lors de la génération du PDF");
+            }
+        }
+
+        private async Task<dynamic> GetClientInfoAsync(Guid clientId)
+        {
+            try
+            {
+                var client = _httpClientFactory.CreateClient();
+                var response = await client.GetAsync($"https://localhost:7076/apigateway/clients/{clientId}");
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadFromJsonAsync<dynamic>();
+                }
+                _logger.LogWarning($"Impossible de récupérer le client {clientId}");
+                return new { Nom = $"Client {clientId.ToString().Substring(0, 8)}", Email = "", Telephone = "" };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, $"Erreur lors de la récupération du client {clientId}");
+                return new { Nom = $"Client {clientId.ToString().Substring(0, 8)}", Email = "", Telephone = "" };
+            }
+        }
+
+        private async Task<dynamic> GetInterventionInfoAsync(Guid interventionId)
+        {
+            try
+            {
+                var client = _httpClientFactory.CreateClient();
+                var response = await client.GetAsync($"https://localhost:7076/apigateway/interventions/{interventionId}");
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadFromJsonAsync<dynamic>();
+                }
+                _logger.LogWarning($"Impossible de récupérer l'intervention {interventionId}");
+                return new { Statut = "Inconnu", DateIntervention = System.DateTime.MinValue, Description = "" };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, $"Erreur lors de la récupération de l'intervention {interventionId}");
+                return new { Statut = "Inconnu", DateIntervention = System.DateTime.MinValue, Description = "" };
+            }
+        }
+
+        private async Task<dynamic> GetTechnicianInfoAsync(Guid? technicianId)
+        {
+            if (!technicianId.HasValue)
+            {
+                return new { Nom = "Non assigné", Email = "", Telephone = "" };
+            }
+            try
+            {
+                var client = _httpClientFactory.CreateClient();
+                var response = await client.GetAsync($"https://localhost:7076/apigateway/techniciens/{technicianId}");
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadFromJsonAsync<dynamic>();
+                }
+                _logger.LogWarning($"Impossible de récupérer le technicien {technicianId}");
+                return new { Nom = $"Technicien {technicianId.ToString().Substring(0, 8)}", Email = "", Telephone = "" };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, $"Erreur lors de la récupération du technicien {technicianId}");
+                return new { Nom = $"Technicien {technicianId.ToString().Substring(0, 8)}", Email = "", Telephone = "" };
+            }
+        }
+
+        private byte[] GeneratePdfContent(Report report, dynamic clientInfo, dynamic interventionInfo, dynamic technicianInfo)
+        {
+            // Utilisation de QuestPDF ou iTextSharp recommandée en production
+            try
+            {
+                using (var ms = new MemoryStream())
+                {
+                    // PDF factice pour l'exemple
+                    var dummyPdf = $"PDF Rapport\nID: {report.Id}\nClient: {clientInfo?.Nom}\nIntervention: {interventionInfo?.Statut}";
+                    return System.Text.Encoding.UTF8.GetBytes(dummyPdf);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de la génération du PDF");
+                return System.Text.Encoding.UTF8.GetBytes($"Erreur PDF: {ex.Message}");
             }
         }
     }

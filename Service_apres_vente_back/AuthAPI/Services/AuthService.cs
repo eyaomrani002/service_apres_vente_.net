@@ -93,7 +93,10 @@ namespace AuthAPI.Services
             var syncEnabled = _configuration.GetValue<bool>("ClientSync:Enabled", true);
             if (syncEnabled)
             {
-                _ = Task.Run(async () => await EnsureClientProfileAsync(user));
+                _ = Task.Run(async () => {
+                    var success = await SyncClientWithClientAPI(user);
+                    if (!success) await EnsureClientProfileAsync(user);
+            });
             }
 
             var jwtSecurityToken = await CreateJwtToken(user);
@@ -597,7 +600,77 @@ namespace AuthAPI.Services
         {
             return await _userManager.Users.CountAsync();
         }
+    // ========== NOUVELLE MÉTHODE SIMPLIFIÉE (à utiliser) ==========
+    private async Task<bool> SyncClientWithClientAPI(ApplicationUser user)
+    {
+        try
+        {
+            _logger.LogInformation("🔧 [NEW] Starting client sync for {Email}", user.Email);
+            
+            var roles = await _userManager.GetRolesAsync(user);
+            if (!roles.Contains("Client"))
+            {
+                _logger.LogDebug("User {Email} doesn't have Client role, skipping sync", user.Email);
+                return false;
+            }
 
+            var gatewayBaseUrl = _configuration["GatewayBaseUrl"] ?? "https://localhost:7076";
+            var httpClient = _httpClientFactory.CreateClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(15);
+
+            var encodedEmail = Uri.EscapeDataString(user.Email ?? string.Empty);
+            
+            // Étape 1: Vérifier si le client existe déjà
+            var checkUrl = $"{gatewayBaseUrl}/apigateway/internal/clients/email/{encodedEmail}";
+            var checkResponse = await httpClient.GetAsync(checkUrl);
+            
+            if (checkResponse.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("✅ [NEW] Client {Email} already exists in ClientAPI", user.Email);
+                return true;
+            }
+
+            // Étape 2: Créer le client
+            var createUrl = $"{gatewayBaseUrl}/apigateway/internal/clients";
+            var payload = new
+            {
+                Nom = $"{user.FirstName} {user.LastName}".Trim(),
+                Email = user.Email,
+                Telephone = user.PhoneNumber ?? string.Empty,
+                Adresse = string.Empty,
+                DateInscription = DateTime.Now
+            };
+
+            _logger.LogInformation("[NEW] Creating client {Email} via Gateway", user.Email);
+            var createResponse = await httpClient.PostAsJsonAsync(createUrl, payload);
+
+            if (createResponse.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("✅ [NEW] Successfully created client {Email} in ClientAPI", user.Email);
+                return true;
+            }
+            else
+            {
+                var errorContent = await createResponse.Content.ReadAsStringAsync();
+                _logger.LogError("❌ [NEW] Failed to create client {Email}: {StatusCode} - {Error}", 
+                    user.Email, createResponse.StatusCode, errorContent);
+                
+                // Fallback: essayer l'ancienne méthode
+                _logger.LogWarning("⚠️ Falling back to old method for {Email}", user.Email);
+                await EnsureClientProfileAsync(user);
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ [NEW] Error syncing client {Email} with ClientAPI", user.Email);
+            
+            // Fallback: essayer l'ancienne méthode
+            _logger.LogWarning("⚠️ Falling back to old method after exception for {Email}", user.Email);
+            await EnsureClientProfileAsync(user);
+            return false;
+        }
+    }
         // ========== SYNCHRONISATION AVEC CLIENTAPI (AMÉLIORÉE) ==========
 
         private async Task EnsureClientProfileAsync(ApplicationUser user)
@@ -774,7 +847,20 @@ namespace AuthAPI.Services
                     user.Email, stopwatch.ElapsedMilliseconds);
             }
         }
-
+    // ========== MÉTHODE UNIQUE POUR LES APPELS ==========
+    private async Task SynchronizeClientProfile(ApplicationUser user)
+    {
+        // Utiliser d'abord la nouvelle méthode, avec fallback sur l'ancienne
+        try
+        {
+            await SyncClientWithClientAPI(user);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in new sync method, trying old method for {Email}", user.Email);
+            await EnsureClientProfileAsync(user);
+        }
+    }
         private async Task UpdateClientProfileAsync(ApplicationUser user)
         {
             try

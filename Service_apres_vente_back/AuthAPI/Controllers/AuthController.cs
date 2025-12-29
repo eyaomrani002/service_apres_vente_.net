@@ -4,6 +4,7 @@ using AuthAPI.Models;
 using AuthAPI.Services;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Configuration;
 
 namespace AuthAPI.Controllers
 {
@@ -14,15 +15,24 @@ namespace AuthAPI.Controllers
         private readonly IAuthService _authService;
         private readonly IRefreshTokenService _refreshTokenService;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<AuthController> _logger;
+        private readonly IHttpClientFactory _httpClientFactory;
 
         public AuthController(
             IAuthService authService,
             IRefreshTokenService refreshTokenService,
-            UserManager<ApplicationUser> userManager)
+            UserManager<ApplicationUser> userManager,
+            IConfiguration configuration,
+            ILogger<AuthController> logger,
+            IHttpClientFactory httpClientFactory)
         {
             _authService = authService;
             _refreshTokenService = refreshTokenService;
             _userManager = userManager;
+            _configuration = configuration;
+            _logger = logger;
+            _httpClientFactory = httpClientFactory;
         }
 
         [HttpPost("register")]
@@ -577,6 +587,256 @@ namespace AuthAPI.Controllers
             catch (Exception ex)
             {
                 return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        // ========== NOUVEAUX ENDPOINTS POUR SYNCHRONISATION ==========
+
+        [Authorize]
+        [HttpPost("sync-client-profile")]
+        public async Task<IActionResult> SyncClientProfile()
+        {
+            try
+            {
+                var userId = User.FindFirst("uid")?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                var user = await _userManager.FindByIdAsync(userId);
+                if (user == null)
+                    return NotFound(new { message = "User not found" });
+
+                var roles = await _userManager.GetRolesAsync(user);
+                
+                if (!roles.Contains("Client"))
+                {
+                    return Ok(new 
+                    { 
+                        success = false, 
+                        message = "User doesn't have Client role",
+                        roles = roles
+                    });
+                }
+
+                // Vérifier si le client existe déjà
+                var gatewayBaseUrl = _configuration["GatewayBaseUrl"] ?? "https://localhost:7076";
+                var httpClient = _httpClientFactory.CreateClient();
+                
+                var encodedEmail = Uri.EscapeDataString(user.Email ?? string.Empty);
+                var checkUrl = $"{gatewayBaseUrl}/apigateway/internal/clients/email/{encodedEmail}";
+                
+                _logger.LogInformation("Checking client at: {CheckUrl}", checkUrl);
+                
+                var checkResponse = await httpClient.GetAsync(checkUrl);
+                
+                if (checkResponse.IsSuccessStatusCode)
+                {
+                    return Ok(new 
+                    { 
+                        success = true, 
+                        message = "Client already exists in ClientAPI",
+                        email = user.Email,
+                        statusCode = checkResponse.StatusCode
+                    });
+                }
+
+                // Créer le client
+                var createUrl = $"{gatewayBaseUrl}/apigateway/internal/clients";
+                var payload = new
+                {
+                    Nom = $"{user.FirstName} {user.LastName}".Trim(),
+                    Email = user.Email,
+                    Telephone = user.PhoneNumber ?? string.Empty,
+                    Adresse = string.Empty
+                };
+
+                _logger.LogInformation("Creating client at: {CreateUrl}", createUrl);
+                
+                var createResponse = await httpClient.PostAsJsonAsync(createUrl, payload);
+                
+                if (createResponse.IsSuccessStatusCode)
+                {
+                    return Ok(new 
+                    { 
+                        success = true, 
+                        message = "Client created successfully in ClientAPI",
+                        email = user.Email,
+                        statusCode = createResponse.StatusCode
+                    });
+                }
+                else
+                {
+                    var errorContent = await createResponse.Content.ReadAsStringAsync();
+                    return BadRequest(new 
+                    { 
+                        success = false, 
+                        message = "Failed to create client",
+                        error = errorContent,
+                        statusCode = createResponse.StatusCode
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during manual client sync");
+                return StatusCode(500, new 
+                { 
+                    success = false, 
+                    message = "Server error", 
+                    error = ex.Message,
+                    details = ex.StackTrace
+                });
+            }
+        }
+
+        [Authorize(Roles = "Admin")]
+        [HttpGet("check-sync/{email}")]
+        public async Task<IActionResult> CheckSyncStatus(string email)
+        {
+            try
+            {
+                var user = await _userManager.FindByEmailAsync(email);
+                if (user == null)
+                    return NotFound(new { message = "User not found" });
+
+                var roles = await _userManager.GetRolesAsync(user);
+                
+                // Vérifier dans AuthAPI
+                var authInfo = new
+                {
+                    user.Id,
+                    user.Email,
+                    user.FirstName,
+                    user.LastName,
+                    user.PhoneNumber,
+                    Roles = roles,
+                    HasClientRole = roles.Contains("Client"),
+                    CreatedAt = user.CreatedAt,
+                    LastLoginAt = user.LastLoginAt
+                };
+
+                // Vérifier dans ClientAPI via Gateway
+                var gatewayBaseUrl = _configuration["GatewayBaseUrl"] ?? "https://localhost:7076";
+                var httpClient = _httpClientFactory.CreateClient();
+                
+                var encodedEmail = Uri.EscapeDataString(email);
+                var clientApiUrl = $"{gatewayBaseUrl}/apigateway/internal/clients/email/{encodedEmail}";
+                
+                var clientExists = false;
+                object clientInfo = null;
+                
+                try
+                {
+                    var response = await httpClient.GetAsync(clientApiUrl);
+                    clientExists = response.IsSuccessStatusCode;
+                    
+                    if (clientExists)
+                    {
+                        var content = await response.Content.ReadAsStringAsync();
+                        clientInfo = Newtonsoft.Json.JsonConvert.DeserializeObject(content);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to check ClientAPI for {Email}", email);
+                }
+
+                return Ok(new
+                {
+                    AuthUser = authInfo,
+                    ClientExists = clientExists,
+                    ClientInfo = clientInfo,
+                    SyncStatus = roles.Contains("Client") && clientExists ? "Synchronized" : 
+                                roles.Contains("Client") && !clientExists ? "Not synchronized (Client role but no client profile)" :
+                                !roles.Contains("Client") && clientExists ? "Orphan client (Client profile but no Client role)" : "Not applicable"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking sync status for {Email}", email);
+                return StatusCode(500, new { message = "Server error", error = ex.Message });
+            }
+        }
+
+        [HttpGet("test-gateway")]
+        public async Task<IActionResult> TestGateway()
+        {
+            try
+            {
+                var gatewayBaseUrl = _configuration["GatewayBaseUrl"] ?? "https://localhost:7076";
+                
+                var tests = new List<object>();
+                
+                // Test 1: Accès à la Gateway elle-même
+                var httpClient = _httpClientFactory.CreateClient();
+                var gatewayResponse = await httpClient.GetAsync(gatewayBaseUrl);
+                tests.Add(new
+                {
+                    Test = "Gateway accessibility",
+                    Url = gatewayBaseUrl,
+                    Success = gatewayResponse.IsSuccessStatusCode,
+                    StatusCode = gatewayResponse.StatusCode
+                });
+
+                // Test 2: Route interne GET clients
+                var testEmail = "test@example.com";
+                var encodedEmail = Uri.EscapeDataString(testEmail);
+                var internalGetUrl = $"{gatewayBaseUrl}/apigateway/internal/clients/email/{encodedEmail}";
+                
+                var internalGetResponse = await httpClient.GetAsync(internalGetUrl);
+                tests.Add(new
+                {
+                    Test = "Internal GET clients route",
+                    Url = internalGetUrl,
+                    Success = internalGetResponse.IsSuccessStatusCode,
+                    StatusCode = internalGetResponse.StatusCode,
+                    IsNotFound = internalGetResponse.StatusCode == System.Net.HttpStatusCode.NotFound
+                });
+
+                // Test 3: Route interne POST clients
+                var internalPostUrl = $"{gatewayBaseUrl}/apigateway/internal/clients";
+                var testPayload = new
+                {
+                    Nom = "Test User",
+                    Email = "test@example.com",
+                    Telephone = "1234567890",
+                    Adresse = "Test Address"
+                };
+                
+                var internalPostResponse = await httpClient.PostAsJsonAsync(internalPostUrl, testPayload);
+                tests.Add(new
+                {
+                    Test = "Internal POST clients route",
+                    Url = internalPostUrl,
+                    Success = internalPostResponse.IsSuccessStatusCode,
+                    StatusCode = internalPostResponse.StatusCode
+                });
+
+                return Ok(new
+                {
+                    GatewayBaseUrl = gatewayBaseUrl,
+                    ConfigurationValue = _configuration["GatewayBaseUrl"],
+                    Tests = tests,
+                    Summary = new
+                    {
+                        TotalTests = tests.Count,
+                        SuccessfulTests = tests.Count(t => (bool)t.GetType().GetProperty("Success").GetValue(t)),
+                        FailedTests = tests.Count(t => !(bool)t.GetType().GetProperty("Success").GetValue(t))
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    Error = ex.Message,
+                    Details = ex.StackTrace,
+                    Configuration = new
+                    {
+                        GatewayBaseUrl = _configuration["GatewayBaseUrl"],
+                        ClientApiBaseUrl = _configuration["ClientApiBaseUrl"]
+                    }
+                });
             }
         }
 

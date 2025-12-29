@@ -50,16 +50,17 @@ import AuthContext from '../../contexts/AuthContext';
 const drawerWidth = 240;
 
 const menuItems = [
-  { text: 'Tableau de bord', icon: <Dashboard />, path: '/dashboard', roles: ['admin'] },
-  { text: 'Catalogue', icon: <Inventory />, path: '/catalog' },
-  { text: 'Articles', icon: <Inventory />, path: '/articles', roles: ['admin'] },
-  { text: 'Clients', icon: <People />, path: '/clients', roles: ['admin'] },
+  { text: 'Tableau de bord', icon: <Dashboard />, path: '/dashboard', roles: ['admin', 'responsablesav', 'technicien'] },
+  { text: 'Catalogue', icon: <Inventory />, path: '/catalog', roles: ['client', 'technicien', 'responsablesav', 'admin'] },
+  { text: 'Articles', icon: <Inventory />, path: '/articles', roles: ['responsablesav', 'admin'] },
+  { text: 'Clients', icon: <People />, path: '/clients', roles: ['responsablesav', 'admin'] },
+  { text: 'Techniciens', icon: <Build />, path: '/techniciens', roles: ['responsablesav', 'admin'] },
   { text: 'Utilisateurs', icon: <Group />, path: '/users', roles: ['admin'] },
-  { text: 'Réclamations', icon: <Assignment />, path: '/reclamations' },
-  { text: 'Interventions', icon: <Build />, path: '/interventions', roles: ['admin'] },
-  { text: 'Factures', icon: <ReceiptLong />, path: '/factures', roles: ['admin'] },
-  { text: 'Calendrier', icon: <CalendarMonth />, path: '/calendar', roles: ['admin'] },
-  { text: 'Rapports', icon: <Assessment />, path: '/reports', roles: ['admin'] },
+  { text: 'Réclamations', icon: <Assignment />, path: '/reclamations', roles: ['client', 'responsablesav', 'admin'] },
+  { text: 'Interventions', icon: <Build />, path: '/interventions', roles: ['technicien', 'responsablesav', 'admin'] },
+  { text: 'Factures', icon: <ReceiptLong />, path: '/factures', roles: ['client', 'responsablesav', 'admin'] },
+  { text: 'Calendrier', icon: <CalendarMonth />, path: '/calendar', roles: ['technicien', 'responsablesav', 'admin'] },
+  { text: 'Rapports', icon: <Assessment />, path: '/reports', roles: ['technicien', 'responsablesav', 'admin'] },
   { text: 'Paramètres', icon: <Settings />, path: '/settings', roles: ['admin'] },
 ];
 

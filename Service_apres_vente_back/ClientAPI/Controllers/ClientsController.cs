@@ -109,27 +109,63 @@ public ActionResult<Client> GetClientByEmail(string email)
 }
 
         // POST: api/clients
-        [HttpPost]
-        public ActionResult<Client> CreateClient(Client client)
+// Dans ClientsController.cs (ClientAPI)
+[HttpPost]
+public ActionResult<Client> CreateClient(Client client)
+{
+    try
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        // Vérifier si l'email existe déjà
+        var existingClient = _clientRepository.GetClientByEmail(client.Email);
+        if (existingClient != null)
         {
-            try
-            {
-                if (!ModelState.IsValid)
-                    return BadRequest(ModelState);
-
-                if (_clientRepository.EmailExists(client.Email))
-                    return BadRequest("Cet email est déjà utilisé");
-
-                _clientRepository.AddClient(client);
-                return CreatedAtAction(nameof(GetClient), new { id = client.Id }, client);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Erreur lors de POST /api/clients");
-                return StatusCode(500, "Erreur serveur");
-            }
+            // IMPORTANT: Retourner OK, pas BadRequest pour la synchro
+            _logger.LogInformation("Client with email {Email} already exists, returning existing", client.Email);
+            return Ok(existingClient);  // ← Ceci est CORRECT
         }
 
+        // Si DateInscription n'est pas fournie, mettre la date actuelle
+        if (client.DateInscription == default)
+            client.DateInscription = DateTime.Now;
+
+        _clientRepository.AddClient(client);
+        
+        _logger.LogInformation("✅ New client created: {Email} (ID: {Id})", client.Email, client.Id);
+        return CreatedAtAction(nameof(GetClient), new { id = client.Id }, client);
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Erreur lors de POST /api/clients");
+        return StatusCode(500, "Erreur serveur");
+    }
+}
+// Dans ClientsController.cs (ClientAPI)
+[HttpPost("internal")]
+[ApiExplorerSettings(IgnoreApi = true)] // Masquer de Swagger
+public ActionResult<Client> CreateClientInternal([FromBody] Client client)
+{
+    try
+    {
+        // Logique simplifiée sans validation stricte
+        var existing = _clientRepository.GetClientByEmail(client.Email);
+        if (existing != null)
+            return Ok(existing);
+
+        if (client.DateInscription == default)
+            client.DateInscription = DateTime.Now;
+
+        _clientRepository.AddClient(client);
+        return Ok(client); // Retourne OK (200) au lieu de Created (201)
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Erreur dans CreateClientInternal");
+        return StatusCode(500, "Erreur serveur");
+    }
+}
         // PUT: api/clients/5
         [HttpPut("{id}")]
         public IActionResult UpdateClient(int id, Client client)

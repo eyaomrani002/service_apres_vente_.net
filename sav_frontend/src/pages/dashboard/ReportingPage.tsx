@@ -192,54 +192,61 @@ const ReportingPage: React.FC = () => {
   // Charger les données de référence
   const loadReferenceData = async () => {
     try {
-      const [clientsData, interventionsData, techniciensData, usersData] = await Promise.all([
-        clientService.getAll(),
-        interventionService.getAll(),
-        technicienService.getAll(),
-        getUsers()
-      ]);
-      
-      // Fusionner clients API + utilisateurs Client
+      let clientsData = [];
+      let interventionsData = [];
+      let techniciensData = [];
+      let usersData = [];
+
+      if (isAdmin || isResp) {
+        // Admin et responsablesav : accès complet
+        [clientsData, interventionsData, techniciensData, usersData] = await Promise.all([
+          clientService.getAll(),
+          interventionService.getAll(),
+          technicienService.getAll(),
+          getUsers()
+        ]);
+      } else if (isTechnicien && user?.id) {
+        // Technicien : charger uniquement ses interventions/rapports
+        [clientsData, interventionsData, techniciensData] = await Promise.all([
+          clientService.getAll(),
+          interventionService.getAll(),
+          technicienService.getAll()
+        ]);
+        usersData = [];
+      }
+
+      // Fusionner clients API + utilisateurs Client (pour admin/resp)
       const apiClients: Client[] = Array.isArray(clientsData) ? clientsData : [];
       const usersArray: AppUser[] = Array.isArray(usersData) ? 
         usersData.filter(u => u.roles?.some(role => role.toLowerCase() === 'client')) : [];
-      
       const authClients: Client[] = usersArray.map((u: any, idx: number) => ({
-        id: -1000 - idx, // IDs négatifs pour les distinguer
-        nom: (u.firstName || u.lastName) ? 
-          `${u.firstName || ''} ${u.lastName || ''}`.trim() : 
-          (u.fullName || u.userName || u.email || 'Client'),
+        id: -1000 - idx,
+        nom: (u.firstName || u.lastName) ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : (u.fullName || u.userName || u.email || 'Client'),
         email: u.email,
         telephone: u.phoneNumber,
         isAuthUser: true,
         userId: u.id,
       } as Client));
-      
       const merged: Client[] = [...apiClients];
       const seenEmails = new Set(merged.filter(m => m.email).map(m => (m.email as string).toLowerCase()));
-      
       authClients.forEach(cItem => {
         const email = (cItem.email || '').toLowerCase();
         if (email && seenEmails.has(email)) return;
         if (email) seenEmails.add(email);
         merged.push(cItem);
       });
-      
       setClients(merged);
       setAllInterventions(Array.isArray(interventionsData) ? interventionsData : []);
       setTechniciens(Array.isArray(techniciensData) ? techniciensData : []);
       setUsersWithClientRole(usersArray);
-      
       // Mapper les détails des clients
       const clientMap = new Map<number, {nom: string, email?: string}>();
       merged.forEach(client => {
         if (client.id) clientMap.set(client.id, { nom: client.nom, email: client.email });
       });
       setClientDetails(clientMap);
-      
       // Créer la carte interventions/clients
       await mapInterventionsByClient(interventionsData);
-      
     } catch (error: any) {
       console.warn('Erreur lors du chargement des données de référence:', error);
       setMessage('Erreur lors du chargement des données de référence');

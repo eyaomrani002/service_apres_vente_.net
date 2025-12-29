@@ -16,6 +16,7 @@ builder.Services.AddDbContext<ReportingAPIContext>(options => options.UseSqlServ
 
 // Repositories
 builder.Services.AddScoped<ReportingAPI.Models.Repositories.IReportRepository, ReportingAPI.Models.Repositories.ReportRepository>();
+builder.Services.AddHttpClient(); // ← AJOUTER CETTE LIGNE
 
 // CORS
 builder.Services.AddCors(options =>

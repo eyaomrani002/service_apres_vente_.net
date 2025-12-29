@@ -32,6 +32,7 @@ import InterventionsPage from './pages/dashboard/InterventionsPage';
 import CalendarPage from './pages/dashboard/CalendarPage';
 import ReportingPage from './pages/dashboard/ReportingPage';
 import FacturesPage from './pages/dashboard/FacturesPage';
+import TechnicienPage from './pages/dashboard/TechnicienPage';
 import CatalogPage from './pages/catalog/CatalogPage';
 import CartPage from './pages/cart/CartPage';
 
@@ -68,6 +69,7 @@ function AppContent() {
           <Route path="/cart" element={<ProtectedRoute element={<CartPage />} />} />
           <Route path="/articles" element={<ProtectedRoute element={<ArticlesPage />} roles={['admin']} />} />
           <Route path="/clients" element={<ProtectedRoute element={<ClientsPage />} roles={['admin']} />} />
+          <Route path="/techniciens" element={<ProtectedRoute element={<TechnicienPage />} roles={['admin']} />} />
           <Route path="/users" element={<ProtectedRoute element={<UsersPage />} roles={['admin']} />} />
           <Route path="/reclamations" element={<ProtectedRoute element={<ReclamationsPage />} />} />
           <Route path="/interventions" element={<ProtectedRoute element={<InterventionsPage />} roles={['admin']} />} />

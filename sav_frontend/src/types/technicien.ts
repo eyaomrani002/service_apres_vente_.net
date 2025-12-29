@@ -6,6 +6,6 @@ export interface Technicien {
   telephone?: string;
   disponibilite?: string;
   zone?: string;
-  competences?: string[];
+  competences?: string[] | string; // ← Accepter string (CSV) ou string[]
   isActif?: boolean;
 }

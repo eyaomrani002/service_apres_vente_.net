@@ -914,6 +914,23 @@
         "AllowedScopes": []
       }
     }
+    ,
+    {
+      "DownstreamPathTemplate": "/api/reports/export-all",
+      "DownstreamScheme": "https",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 7091
+        }
+      ],
+      "UpstreamPathTemplate": "/apigateway/reports/export-all",
+      "UpstreamHttpMethod": [ "POST" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      }
+    }
   ],
   "GlobalConfiguration": {
     "BaseUrl": "https://localhost:7076",

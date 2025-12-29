@@ -134,12 +134,18 @@ const CalendarPage: React.FC = () => {
   // Charger les utilisateurs
   useEffect(() => {
     let ignore = false;
-    
+
     const loadUsers = async () => {
+      // Ne charger les users que pour admin ou responsablesav
+      if (!(isAdmin || isResp)) {
+        setUserTechniciens([]);
+        setUserClients([]);
+        return;
+      }
       try {
         const users = await getUsers();
         if (ignore) return;
-        
+
         const techUsers = users.filter(u => 
           u.roles?.some(r => r.toLowerCase() === 'technicien')
         );
@@ -147,7 +153,7 @@ const CalendarPage: React.FC = () => {
           id: String(u.id), 
           label: u.userName || u.email || `Technicien ${u.id}` 
         })));
-        
+
         const clientUsers = users.filter(u => 
           u.roles?.some(r => r.toLowerCase() === 'client')
         );
@@ -170,7 +176,7 @@ const CalendarPage: React.FC = () => {
     loadUsers();
     
     return () => { ignore = true; };
-  }, []);
+  }, [isAdmin, isResp]);
   
   // Options pour le select des techniciens
   const technicianOptions = useMemo(() => {

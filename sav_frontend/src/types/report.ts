@@ -8,6 +8,9 @@ export type Report = {
   generatedAt?: string;
   url?: string;
   title?: string;
+  clientNom?: string;
+  clientEmail?: string;
+  clientTelephone?: string;
 };
 
 export type ReportRequest = {

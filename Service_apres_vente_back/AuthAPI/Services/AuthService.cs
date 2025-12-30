@@ -774,7 +774,8 @@ namespace AuthAPI.Services
                         Nom = $"{user.FirstName} {user.LastName}".Trim(),
                         Email = user.Email,
                         Telephone = user.PhoneNumber ?? string.Empty,
-                        Adresse = string.Empty
+                        Adresse = string.Empty,
+                        UserId = user.Id
                     };
 
                     var createEndpoints = new List<string>

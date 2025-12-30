@@ -9,6 +9,7 @@ import ReclamationsTable from '../../components/reclamations/ReclamationsTable';
 import ReclamationForm from '../../components/reclamations/ReclamationForm';
 import { Reclamation } from '../../types/reclamation';
 import { reclamationService } from '../../services/reclamationService';
+import { clientService } from '../../services/clientService';
 import AuthContext from '../../contexts/AuthContext';
 
 // Animations
@@ -77,31 +78,43 @@ const ReclamationsPage: React.FC = () => {
   const [messageType, setMessageType] = useState<'success' | 'error' | 'info'>('info');
   const [stats, setStats] = useState<any>(null);
   const [selected, setSelected] = useState<Reclamation | null>(null);
-  const [currentClientId, setCurrentClientId] = useState<number | null>(null);
+  const [currentClientId, setCurrentClientId] = useState<string | number | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [isTechnicien, setIsTechnicien] = useState<boolean>(false);
   const { user } = useContext(AuthContext);
 
   const load = async () => {
+    console.log('load called', { isAdmin, isTechnicien, currentClientId, user });
     setLoading(true);
     try {
-      if (!isAdmin) {
-        if (!currentClientId) {
-          setItems([]);
-          setStats(null);
-          return;
-        }
-        const data = await reclamationService.getByClient(currentClientId);
+      if (isTechnicien && user?.id) {
+        console.log('Loading as technician');
+        // Technicien voit les réclamations qui lui sont assignées
+        const data = await reclamationService.getByTechnicien(Number(user.id));
+        console.log('Technician data:', data);
         setItems(Array.isArray(data) ? data : []);
         setStats(null); // stats réservées admin
+      } else if (!isAdmin) {
+        console.log('Loading as client - temporarily showing all reclamations');
+        // TEMPORAIRE : Les clients voient toutes les réclamations jusqu'à ce que la liaison Auth0/Client soit établie
+        const allData = await reclamationService.getAll();
+        setItems(Array.isArray(allData) ? allData : []);
+        setStats(null); // stats réservées admin
       } else {
+        console.log('Loading as admin');
         const data = await reclamationService.getAll();
+        console.log('Admin data:', data);
         setItems(Array.isArray(data) ? data : []);
         try {
           const s = await reclamationService.getStats();
+          console.log('Admin stats:', s);
           setStats(s);
-        } catch {}
+        } catch (statsError) {
+          console.log('Stats error:', statsError);
+        }
       }
     } catch (e: any) {
+      console.log('Load error:', e);
       showMessage(e.message || 'Erreur chargement', 'error');
     } finally {
       setLoading(false);
@@ -113,17 +126,58 @@ const ReclamationsPage: React.FC = () => {
       const stored = localStorage.getItem('user');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (parsed?.id) setCurrentClientId(Number(parsed.id));
+        if (parsed?.id) {
+          const roles = (parsed?.roles || parsed?.role || []).map((r: string) => (r.toLowerCase ? r.toLowerCase() : r));
+          const isTechnicien = Array.isArray(roles) ? roles.includes('technicien') : roles === 'technicien';
+          const isAdmin = Array.isArray(roles) ? roles.includes('admin') : roles === 'admin';
+          
+          // Pour les techniciens, convertir en number, pour les clients garder comme string
+          if (isTechnicien) {
+            const id = Number(parsed.id);
+            if (!isNaN(id) && isFinite(id)) {
+              setCurrentClientId(id);
+            }
+          } else if (!isAdmin) {
+            // Pour les clients, garder l'ID comme string (peut être UUID Auth0)
+            setCurrentClientId(parsed.id);
+          }
+        }
         const roles = (parsed?.roles || parsed?.role || []).map((r: string) => (r.toLowerCase ? r.toLowerCase() : r));
         setIsAdmin(Array.isArray(roles) ? roles.includes('admin') : roles === 'admin');
+        setIsTechnicien(Array.isArray(roles) ? roles.includes('technicien') : roles === 'technicien');
       }
     } catch {}
   }, []);
 
   useEffect(() => {
-    if (!isAdmin && currentClientId === null) return;
+    if (user) {
+      const roles = (user.roles || user.role || []).map((r: string) => (r.toLowerCase ? r.toLowerCase() : r));
+      console.log('User roles:', roles, 'user:', user);
+      setIsAdmin(Array.isArray(roles) ? roles.includes('admin') : roles === 'admin');
+      setIsTechnicien(Array.isArray(roles) ? roles.includes('technicien') : roles === 'technicien');
+      if (user.id) {
+        const isTechnicien = Array.isArray(roles) ? roles.includes('technicien') : roles === 'technicien';
+        const isAdmin = Array.isArray(roles) ? roles.includes('admin') : roles === 'admin';
+        
+        // Pour les techniciens, convertir en number, pour les clients garder comme string
+        if (isTechnicien) {
+          const id = Number(user.id);
+          if (!isNaN(id) && isFinite(id)) {
+            setCurrentClientId(id);
+          }
+        } else if (!isAdmin) {
+          // Pour les clients, garder l'ID comme string
+          console.log('Setting currentClientId for client:', user.id);
+          setCurrentClientId(user.id);
+        }
+      }
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if ((!isAdmin && !isTechnicien && currentClientId === null) || (isTechnicien && !user?.id)) return;
     load();
-  }, [isAdmin, currentClientId]);
+  }, [isAdmin, isTechnicien, currentClientId, user?.id]);
 
   const showMessage = (msg: string, type: 'success' | 'error' | 'info' = 'info') => {
     setMessage(msg);
@@ -133,14 +187,26 @@ const ReclamationsPage: React.FC = () => {
   const handleSearch = async (q: { searchTerm?: string; clientId?: number; statut?: string }) => {
     setLoading(true);
     try {
+      if (isTechnicien && user?.id) {
+        // Technicien ne peut rechercher que dans ses réclamations assignées
+        const data = await reclamationService.getByTechnicien(Number(user.id));
+        let list: Reclamation[] = Array.isArray(data) ? data : [];
+        if (q.searchTerm) {
+          const term = q.searchTerm.toLowerCase();
+          list = list.filter(r => (r.sujet || '').toLowerCase().includes(term) || (r.description || '').toLowerCase().includes(term));
+        }
+        if (q.statut) {
+          list = list.filter(r => (r.statut || '').toLowerCase() === q.statut!.toLowerCase());
+        }
+        setItems(list);
+        return;
+      }
+
       const effectiveClientId = isAdmin ? q.clientId : currentClientId ?? undefined;
 
       if (!isAdmin) {
-        if (!currentClientId) {
-          setItems([]);
-          return;
-        }
-        const data = await reclamationService.getByClient(currentClientId);
+        // TEMPORAIRE : Les clients voient toutes les réclamations jusqu'à ce que la liaison Auth0/Client soit établie
+        const data = await reclamationService.getAll();
         let list: Reclamation[] = Array.isArray(data) ? data : [];
         if (q.searchTerm) {
           const term = q.searchTerm.toLowerCase();
@@ -176,9 +242,10 @@ const ReclamationsPage: React.FC = () => {
     }
   };
 
-  const handleCreate = () => { 
-    setEditing(null); 
-    setOpenForm(true); 
+  const handleCreate = () => {
+    console.log('handleCreate called', { isAdmin, isTechnicien, currentClientId, user });
+    setEditing(null);
+    setOpenForm(true);
   };
 
   const handleEdit = (r: Reclamation) => { 
@@ -198,10 +265,12 @@ const ReclamationsPage: React.FC = () => {
   };
 
   const handleSave = async (payload: Partial<Reclamation>) => {
+    console.log('handleSave called', { payload, isAdmin, currentClientId, user });
     try {
       const body: Partial<Reclamation> = { ...payload };
-      if (!isAdmin && currentClientId) {
-        body.clientId = currentClientId;
+      if (!isAdmin && (currentClientId || user?.id)) {
+        body.clientId = currentClientId || user?.id;
+        console.log('Forcing clientId to:', body.clientId);
       }
 
       if (editing) {
@@ -338,14 +407,19 @@ const ReclamationsPage: React.FC = () => {
         {/* Header avec filtres et bouton */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
           <Box sx={{ flex: 1, minWidth: '300px' }}>
-            <ReclamationFilters onSearch={handleSearch} disableClientFilter={!isAdmin} isAdmin={isAdmin} />
+            <ReclamationFilters onSearch={handleSearch} disableClientFilter={!isAdmin || isTechnicien} isAdmin={isAdmin} />
           </Box>
-          <GradientButton 
-            startIcon={<Add />} 
-            onClick={handleCreate}
-          >
-            Nouvelle Réclamation
-          </GradientButton>
+          {!isTechnicien && (
+            <GradientButton 
+              startIcon={<Add />} 
+              onClick={() => {
+                console.log('Create button clicked', { isAdmin, isTechnicien, currentClientId, user });
+                handleCreate();
+              }}
+            >
+              Nouvelle Réclamation
+            </GradientButton>
+          )}
         </Box>
 
         {/* Table ou Loading */}
@@ -368,10 +442,13 @@ const ReclamationsPage: React.FC = () => {
       <ReclamationForm 
         open={openForm} 
         reclamation={editing} 
-        onClose={() => setOpenForm(false)} 
+        onClose={() => {
+          console.log('Form closed');
+          setOpenForm(false);
+        }} 
         onSave={handleSave} 
-        initialData={!isAdmin && !editing ? { clientId: currentClientId ?? undefined } : undefined}
-        lockClient={!isAdmin && !editing && !!currentClientId}
+        initialData={!isAdmin && !editing ? { clientId: currentClientId || user?.id || undefined } : undefined}
+        lockClient={!isAdmin && !editing && !!(currentClientId || user?.id)}
         currentUser={user as any}
         isAdmin={isAdmin}
       />

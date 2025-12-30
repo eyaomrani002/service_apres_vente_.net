@@ -71,7 +71,7 @@ function AppContent() {
           <Route path="/clients" element={<ProtectedRoute element={<ClientsPage />} roles={['admin']} />} />
           <Route path="/techniciens" element={<ProtectedRoute element={<TechnicienPage />} roles={['admin']} />} />
           <Route path="/users" element={<ProtectedRoute element={<UsersPage />} roles={['admin']} />} />
-          <Route path="/reclamations" element={<ProtectedRoute element={<ReclamationsPage />} />} />
+          <Route path="/reclamations" element={<ProtectedRoute element={<ReclamationsPage />} roles={['client', 'technicien', 'responsablesav', 'admin']} />} />
           <Route path="/interventions" element={<ProtectedRoute element={<InterventionsPage />} roles={['admin']} />} />
           <Route path="/calendar" element={<ProtectedRoute element={<CalendarPage />} roles={['admin', 'responsablesav', 'technicien']} />} />
           <Route path="/reports" element={<ProtectedRoute element={<ReportingPage />} roles={['admin', 'responsablesav', 'technicien']} />} />

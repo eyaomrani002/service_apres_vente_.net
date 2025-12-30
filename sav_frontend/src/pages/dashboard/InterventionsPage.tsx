@@ -140,14 +140,24 @@ const InterventionsPage: React.FC = () => {
       const roles = (user.roles || user.role || []).map((r: string) => (r.toLowerCase ? r.toLowerCase() : r));
       setIsAdmin(Array.isArray(roles) ? roles.includes('admin') : roles === 'admin');
       setIsTechnicien(Array.isArray(roles) ? roles.includes('technicien') : roles === 'technicien');
-      if (user.id) setCurrentClientId(Number(user.id));
+      if (user.id) {
+        const id = Number(user.id);
+        if (!isNaN(id) && isFinite(id)) {
+          setCurrentClientId(id);
+        }
+      }
       return;
     }
     try {
       const stored = localStorage.getItem('user');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (parsed?.id) setCurrentClientId(Number(parsed.id));
+        if (parsed?.id) {
+          const id = Number(parsed.id);
+          if (!isNaN(id) && isFinite(id)) {
+            setCurrentClientId(id);
+          }
+        }
         const roles = (parsed?.roles || parsed?.role || []).map((r: string) => (r.toLowerCase ? r.toLowerCase() : r));
         setIsAdmin(Array.isArray(roles) ? roles.includes('admin') : roles === 'admin');
         setIsTechnicien(Array.isArray(roles) ? roles.includes('technicien') : roles === 'technicien');

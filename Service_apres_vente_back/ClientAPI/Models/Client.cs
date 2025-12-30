@@ -27,6 +27,9 @@ namespace ClientAPI.Models
         [Display(Name = "Adresse")]
         public string? Adresse { get; set; }
 
+        [Display(Name = "ID utilisateur Auth0")]
+        public string? UserId { get; set; }
+
         [Display(Name = "Date d'inscription")]
         public DateTime DateInscription { get; set; } = DateTime.Now;
 

@@ -120,6 +120,7 @@ interface Props {
 }
 
 const ReclamationForm: React.FC<Props> = ({ open, reclamation, onClose, onSave, initialData, lockClient, currentUser, isAdmin }) => {
+  console.log('ReclamationForm render', { open, reclamation, initialData, lockClient, isAdmin, currentUser });
   const [form, setForm] = useState<Partial<Reclamation>>({});
   const [clients, setClients] = useState<Client[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
@@ -128,9 +129,12 @@ const ReclamationForm: React.FC<Props> = ({ open, reclamation, onClose, onSave, 
 
   useEffect(() => {
     if (open) {
+      const clientId = initialData?.clientId;
+      const articleId = initialData?.articleId;
+      
       setForm(reclamation ? { ...reclamation } : { 
-        clientId: initialData?.clientId ?? undefined, 
-        articleId: initialData?.articleId ?? undefined,
+        clientId: (clientId && !isNaN(clientId) && isFinite(clientId)) ? clientId : undefined, 
+        articleId: (articleId && !isNaN(articleId) && isFinite(articleId)) ? articleId : undefined,
         sujet: '', 
         description: '', 
         priorite: 'moyenne', 
@@ -195,7 +199,12 @@ const ReclamationForm: React.FC<Props> = ({ open, reclamation, onClose, onSave, 
   }, [open]);
 
   const handleChange = (k: keyof Reclamation, v: any) => {
-    setForm(s => ({ ...s, [k]: v }));
+    // Sanitize numeric values to prevent NaN
+    let sanitizedValue = v;
+    if (typeof v === 'number' && (isNaN(v) || !isFinite(v))) {
+      sanitizedValue = undefined;
+    }
+    setForm(s => ({ ...s, [k]: sanitizedValue }));
     if (errors[k]) {
       setErrors(prev => ({ ...prev, [k]: '' }));
     }
@@ -303,7 +312,7 @@ const ReclamationForm: React.FC<Props> = ({ open, reclamation, onClose, onSave, 
               select={!lockClient}
               fullWidth
               label="Client"
-              value={lockClient ? 'Client connecté' : form.clientId ?? ''}
+              value={lockClient ? (currentUser ? `${currentUser.firstName ?? ''} ${currentUser.lastName ?? ''}`.trim() || currentUser.userName || currentUser.email || 'Client connecté' : 'Client connecté') : (form.clientId && !isNaN(form.clientId) && isFinite(form.clientId) ? form.clientId : '')}
               onChange={lockClient ? undefined : (e => handleChange('clientId', Number(e.target.value)))}
               onFocus={() => setFocusedField('clientId')}
               onBlur={() => setFocusedField(null)}
@@ -337,7 +346,7 @@ const ReclamationForm: React.FC<Props> = ({ open, reclamation, onClose, onSave, 
               select
               fullWidth
               label="Article"
-              value={form.articleId ?? ''}
+              value={form.articleId && !isNaN(form.articleId) && isFinite(form.articleId) ? form.articleId : ''}
               onChange={(e) => handleChange('articleId', Number(e.target.value))}
               onFocus={() => setFocusedField('articleId')}
               onBlur={() => setFocusedField(null)}

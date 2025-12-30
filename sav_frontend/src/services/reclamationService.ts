@@ -36,11 +36,20 @@ export const reclamationService = {
    * Récupérer toutes les réclamations
    */
   getAll: async (): Promise<Reclamation[]> => {
-    const res = await fetch(`${BASE}`, { 
-      headers: getAuthHeaders(),
-      credentials: 'include'
-    });
-    return handleResponse(res);
+    console.log('reclamationService.getAll called');
+    try {
+      const res = await fetch(`${BASE}`, { 
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+      console.log('reclamationService.getAll response status:', res.status);
+      const result = await handleResponse(res);
+      console.log('reclamationService.getAll result:', result);
+      return result;
+    } catch (error) {
+      console.error('reclamationService.getAll error:', error);
+      throw error;
+    }
   },
   
   /**
@@ -97,7 +106,7 @@ export const reclamationService = {
   /**
    * Récupérer les réclamations d'un client
    */
-  getByClient: async (clientId: number): Promise<Reclamation[]> => {
+  getByClient: async (clientId: number | string): Promise<Reclamation[]> => {
     const res = await fetch(`${BASE}/client/${clientId}`, { 
       headers: getAuthHeaders(),
       credentials: 'include'

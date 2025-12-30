@@ -56,7 +56,7 @@ const menuItems = [
   { text: 'Clients', icon: <People />, path: '/clients', roles: ['responsablesav', 'admin'] },
   { text: 'Techniciens', icon: <Build />, path: '/techniciens', roles: ['responsablesav', 'admin'] },
   { text: 'Utilisateurs', icon: <Group />, path: '/users', roles: ['admin'] },
-  { text: 'Réclamations', icon: <Assignment />, path: '/reclamations', roles: ['client', 'responsablesav', 'admin'] },
+  { text: 'Réclamations', icon: <Assignment />, path: '/reclamations', roles: ['client', 'technicien', 'responsablesav', 'admin'] },
   { text: 'Interventions', icon: <Build />, path: '/interventions', roles: ['technicien', 'responsablesav', 'admin'] },
   { text: 'Factures', icon: <ReceiptLong />, path: '/factures', roles: ['client', 'responsablesav', 'admin'] },
   { text: 'Calendrier', icon: <CalendarMonth />, path: '/calendar', roles: ['technicien', 'responsablesav', 'admin'] },

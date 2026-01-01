@@ -1,5 +1,6 @@
 export interface Facture {
   id: number;
+  clientId?: number;
   interventionId: number;
   numeroFacture: string;
   dateFacture: string;

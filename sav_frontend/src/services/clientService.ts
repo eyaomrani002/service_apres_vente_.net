@@ -28,11 +28,14 @@ export const clientService = {
    * Récupérer tous les clients
    */
   getAll: async (): Promise<Client[]> => {
+    console.log('clientService.getAll called');
     const res = await fetch(`${BASE}`, { 
       headers: getAuthHeaders(),
       credentials: 'include'
     });
-    return handleResponse(res);
+    const result = await handleResponse(res);
+    console.log('clientService.getAll result:', result);
+    return result;
   },
   
   /**

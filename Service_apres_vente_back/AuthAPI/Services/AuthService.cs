@@ -93,10 +93,16 @@ namespace AuthAPI.Services
             var syncEnabled = _configuration.GetValue<bool>("ClientSync:Enabled", true);
             if (syncEnabled)
             {
-                _ = Task.Run(async () => {
+                // Execute synchronously during registration to ensure the client profile is created immediately.
+                try
+                {
                     var success = await SyncClientWithClientAPI(user);
                     if (!success) await EnsureClientProfileAsync(user);
-            });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Erreur lors de la synchronisation client pendant l'inscription pour {Email}", user.Email);
+                }
             }
 
             var jwtSecurityToken = await CreateJwtToken(user);
@@ -736,6 +742,73 @@ namespace AuthAPI.Services
                         if (getResponse.IsSuccessStatusCode)
                         {
                             _logger.LogInformation("✅ Profil client existant pour {Email}", user.Email);
+
+                            // Lire le contenu pour vérifier si UserId est renseigné
+                            try
+                            {
+                                var json = await getResponse.Content.ReadAsStringAsync();
+                                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                                var root = doc.RootElement;
+
+                                string existingUserId = null;
+                                if (root.TryGetProperty("userId", out var prop) && prop.ValueKind == System.Text.Json.JsonValueKind.String)
+                                    existingUserId = prop.GetString();
+                                else if (root.TryGetProperty("UserId", out prop) && prop.ValueKind == System.Text.Json.JsonValueKind.String)
+                                    existingUserId = prop.GetString();
+
+                                // If UserId missing, attempt to update the client to set UserId
+                                if (string.IsNullOrWhiteSpace(existingUserId))
+                                {
+                                    string clientId = null;
+                                    if (root.TryGetProperty("id", out var idProp) && idProp.ValueKind == System.Text.Json.JsonValueKind.String)
+                                        clientId = idProp.GetString();
+                                    else if (root.TryGetProperty("Id", out idProp) && idProp.ValueKind == System.Text.Json.JsonValueKind.Number)
+                                        clientId = idProp.GetRawText();
+
+                                    if (!string.IsNullOrEmpty(clientId))
+                                    {
+                                        var updatePayload = new { UserId = user.Id };
+                                        var putEndpoints = new List<string>
+                                        {
+                                            $"{gatewayBaseUrl}/apigateway/internal/clients/{clientId}",
+                                            $"{gatewayBaseUrl}/apigateway/clients/{clientId}",
+                                            $"{clientApiBaseUrl}/api/clients/{clientId}"
+                                        };
+
+                                        foreach (var putEndpoint in putEndpoints)
+                                        {
+                                            try
+                                            {
+                                                _logger.LogDebug("Tentative PUT {Endpoint} pour définir UserId pour {Email}", putEndpoint, user.Email);
+                                                var putResp = await httpClient.PutAsJsonAsync(putEndpoint, updatePayload);
+                                                if (putResp.IsSuccessStatusCode)
+                                                {
+                                                    _logger.LogInformation("✅ Mis à jour UserId pour client {Email} via {Endpoint}", user.Email, putEndpoint);
+                                                    break;
+                                                }
+                                                else
+                                                {
+                                                    var err = await putResp.Content.ReadAsStringAsync();
+                                                    _logger.LogWarning("Échec PUT {Endpoint} : {Status} - {Error}", putEndpoint, putResp.StatusCode, err);
+                                                }
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                _logger.LogDebug(ex, "Erreur lors du PUT {Endpoint}", putEndpoint);
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        _logger.LogDebug("Impossible de déterminer l'ID client depuis la réponse pour {Email}", user.Email);
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Impossible de lire ou traiter la réponse client existant pour {Email}", user.Email);
+                            }
+
                             clientExists = true;
                             break;
                         }

@@ -87,6 +87,8 @@ const ClientsPage: React.FC = () => {
   const { user, hasRole } = useContext(AuthContext);
 
   const isAdmin = useMemo(() => hasRole('admin'), [hasRole]);
+  const isResponsable = useMemo(() => hasRole('responsablesav'), [hasRole]);
+  const canViewAll = useMemo(() => isAdmin || isResponsable, [isAdmin, isResponsable]);
 
   const load = async () => {
     setLoading(true);
@@ -95,7 +97,7 @@ const ClientsPage: React.FC = () => {
 
       // Récupérer les users côté Auth ayant le rôle Client
       let merged = data || [];
-      if (isAdmin) {
+      if (canViewAll) {
         try {
           const users = await getUsers();
           const clientUsers = users.filter((u) => u.roles?.some((r) => r.toLowerCase() === 'client'));
@@ -124,8 +126,8 @@ const ClientsPage: React.FC = () => {
         }
       }
 
-      // Si pas admin, limiter la vue aux clients correspondant à l'utilisateur connecté
-      if (!isAdmin && user?.email) {
+      // Si pas admin/responsable, limiter la vue aux clients correspondant à l'utilisateur connecté
+      if (!canViewAll && user?.email) {
         merged = merged.filter((c) => c.email?.toLowerCase() === user.email.toLowerCase());
 
         // Si rien n'existe encore pour ce user client, créer une fiche légère pour affichage
@@ -156,7 +158,7 @@ const ClientsPage: React.FC = () => {
 
   useEffect(() => { 
     load(); 
-  }, [isAdmin, user?.email]);
+  }, [canViewAll, user?.email]);
 
   const showMessage = (msg: string, type: 'success' | 'error' | 'info' = 'info') => {
     setMessage(msg);

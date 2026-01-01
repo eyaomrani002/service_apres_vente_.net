@@ -121,6 +121,8 @@ const ReclamationsTable: React.FC<Props> = ({
   // Utiliser AuthContext pour déterminer le rôle
   const auth = useContext(AuthContext);
   const isAdmin = auth.hasRole('admin');
+  const isResponsable = auth.hasRole('responsablesav') || auth.hasRole('responsable');
+  const canViewAll = isAdmin || isResponsable || !!canEditDelete;
   const currentUser = auth.user;
 
   const handleSort = (property: keyof Reclamation) => {
@@ -131,7 +133,7 @@ const ReclamationsTable: React.FC<Props> = ({
 
   // Filtrer les items si nécessaire (pour les utilisateurs normaux)
   const filteredItems = items.filter(item => {
-    if (isAdmin) return true; // admin voit tout
+    if (canViewAll) return true; // admin/responsable ou rôle avec droits voit tout
 
     const userId = currentUserId || (currentUser?.id ? Number(currentUser.id) : null);
     if (!userId) return false; // sans user connu, rien afficher
@@ -229,7 +231,7 @@ const ReclamationsTable: React.FC<Props> = ({
   const getClientDisplay = (item: Reclamation) => {
     if (!showClientInfo) return 'Mon compte';
     
-    if (isAdmin) {
+    if (canViewAll) {
       return `Client #${item.clientId ?? '-'}`;
     } else {
       // Pour l'utilisateur normal, vérifier si c'est sa réclamation

@@ -67,13 +67,17 @@ export const reclamationService = {
    * Créer une nouvelle réclamation
    */
   create: async (payload: ReclamationCreateDto): Promise<Reclamation> => {
+    console.log('reclamationService.create called with payload:', payload);
     const res = await fetch(`${BASE}`, { 
       method: 'POST', 
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, 
       credentials: 'include',
       body: JSON.stringify(payload) 
     });
-    return handleResponse(res);
+    console.log('reclamationService.create response status:', res.status);
+    const result = await handleResponse(res);
+    console.log('reclamationService.create result:', result);
+    return result;
   },
   
   /**

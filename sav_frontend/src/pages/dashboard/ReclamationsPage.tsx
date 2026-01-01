@@ -10,6 +10,7 @@ import ReclamationForm from '../../components/reclamations/ReclamationForm';
 import { Reclamation } from '../../types/reclamation';
 import { reclamationService } from '../../services/reclamationService';
 import { clientService } from '../../services/clientService';
+import { Client } from '../../types/client';
 import AuthContext from '../../contexts/AuthContext';
 
 // Animations
@@ -81,7 +82,10 @@ const ReclamationsPage: React.FC = () => {
   const [currentClientId, setCurrentClientId] = useState<string | number | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [isTechnicien, setIsTechnicien] = useState<boolean>(false);
+  const [isResponsable, setIsResponsable] = useState<boolean>(false);
   const { user } = useContext(AuthContext);
+  const [clients, setClients] = useState<Client[]>([]);
+  const canViewAll = isAdmin || isResponsable;
 
   const load = async () => {
     console.log('load called', { isAdmin, isTechnicien, currentClientId, user });
@@ -94,8 +98,8 @@ const ReclamationsPage: React.FC = () => {
         console.log('Technician data:', data);
         setItems(Array.isArray(data) ? data : []);
         setStats(null); // stats réservées admin
-      } else if (!isAdmin) {
-        console.log('Loading as client - temporarily showing all reclamations');
+      } else if (!canViewAll) {
+        console.log('Loading as client (or limited user) - temporarily showing all reclamations');
         // TEMPORAIRE : Les clients voient toutes les réclamations jusqu'à ce que la liaison Auth0/Client soit établie
         const allData = await reclamationService.getAll();
         setItems(Array.isArray(allData) ? allData : []);
@@ -145,8 +149,23 @@ const ReclamationsPage: React.FC = () => {
         const roles = (parsed?.roles || parsed?.role || []).map((r: string) => (r.toLowerCase ? r.toLowerCase() : r));
         setIsAdmin(Array.isArray(roles) ? roles.includes('admin') : roles === 'admin');
         setIsTechnicien(Array.isArray(roles) ? roles.includes('technicien') : roles === 'technicien');
+        setIsResponsable(Array.isArray(roles) ? roles.includes('responsablesav') : roles === 'responsablesav');
       }
     } catch {}
+  }, []);
+
+  // Charger la liste des clients pour résoudre l'ID numérique lié à l'utilisateur Auth0
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      try {
+        const c = await clientService.getAll();
+        if (!ignore) setClients(Array.isArray(c) ? c : []);
+      } catch {
+        if (!ignore) setClients([]);
+      }
+    })();
+    return () => { ignore = true; };
   }, []);
 
   useEffect(() => {
@@ -155,6 +174,7 @@ const ReclamationsPage: React.FC = () => {
       console.log('User roles:', roles, 'user:', user);
       setIsAdmin(Array.isArray(roles) ? roles.includes('admin') : roles === 'admin');
       setIsTechnicien(Array.isArray(roles) ? roles.includes('technicien') : roles === 'technicien');
+      setIsResponsable(Array.isArray(roles) ? roles.includes('responsablesav') : roles === 'responsablesav');
       if (user.id) {
         const isTechnicien = Array.isArray(roles) ? roles.includes('technicien') : roles === 'technicien';
         const isAdmin = Array.isArray(roles) ? roles.includes('admin') : roles === 'admin';
@@ -175,9 +195,9 @@ const ReclamationsPage: React.FC = () => {
   }, [user]);
 
   useEffect(() => {
-    if ((!isAdmin && !isTechnicien && currentClientId === null) || (isTechnicien && !user?.id)) return;
+    if ((!canViewAll && !isTechnicien && currentClientId === null) || (isTechnicien && !user?.id)) return;
     load();
-  }, [isAdmin, isTechnicien, currentClientId, user?.id]);
+  }, [canViewAll, isTechnicien, currentClientId, user?.id]);
 
   const showMessage = (msg: string, type: 'success' | 'error' | 'info' = 'info') => {
     setMessage(msg);
@@ -202,9 +222,9 @@ const ReclamationsPage: React.FC = () => {
         return;
       }
 
-      const effectiveClientId = isAdmin ? q.clientId : currentClientId ?? undefined;
+      const effectiveClientId = canViewAll ? q.clientId : currentClientId ?? undefined;
 
-      if (!isAdmin) {
+      if (!canViewAll) {
         // TEMPORAIRE : Les clients voient toutes les réclamations jusqu'à ce que la liaison Auth0/Client soit établie
         const data = await reclamationService.getAll();
         let list: Reclamation[] = Array.isArray(data) ? data : [];
@@ -268,9 +288,29 @@ const ReclamationsPage: React.FC = () => {
     console.log('handleSave called', { payload, isAdmin, currentClientId, user });
     try {
       const body: Partial<Reclamation> = { ...payload };
-      if (!isAdmin && (currentClientId || user?.id)) {
-        body.clientId = currentClientId || user?.id;
-        console.log('Forcing clientId to:', body.clientId);
+      
+      // Pour les clients non-admin/responsable, trouver l'ID numérique du client
+      if (!canViewAll && (currentClientId || user?.id)) {
+        try {
+          const clients = await clientService.getAll();
+          const userClient = clients.find((c: any) => 
+            c.userId === currentClientId || 
+            c.userId === user?.id || 
+            c.email === user?.email
+          );
+          
+          if (userClient && userClient.id) {
+            body.clientId = userClient.id;
+            console.log('Mapped clientId to numeric ID:', body.clientId);
+          } else {
+            console.warn('Could not find numeric client ID for user:', user?.email);
+            // Fallback: utiliser l'UUID (peut échouer mais au moins on essaie)
+            body.clientId = currentClientId || user?.id;
+          }
+        } catch (clientError) {
+          console.warn('Error finding client ID:', clientError);
+          body.clientId = currentClientId || user?.id;
+        }
       }
 
       if (editing) {
@@ -407,7 +447,7 @@ const ReclamationsPage: React.FC = () => {
         {/* Header avec filtres et bouton */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
           <Box sx={{ flex: 1, minWidth: '300px' }}>
-            <ReclamationFilters onSearch={handleSearch} disableClientFilter={!isAdmin || isTechnicien} isAdmin={isAdmin} />
+            <ReclamationFilters onSearch={handleSearch} disableClientFilter={!canViewAll || isTechnicien} isAdmin={canViewAll} />
           </Box>
           {!isTechnicien && (
             <GradientButton 
@@ -428,29 +468,31 @@ const ReclamationsPage: React.FC = () => {
             <CircularProgress size={60} thickness={4} sx={{ color: '#2196F3' }} />
           </Box>
         ) : (
-          <ReclamationsTable 
-            items={items} 
-            onEdit={handleEdit} 
-            onDelete={handleDelete} 
-            onView={(r) => setSelected(r)} 
-            canEditDelete={isAdmin}
+          <ReclamationsTable
+            items={items}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onView={(r) => setSelected(r)}
+            canEditDelete={canViewAll}
+            currentUserId={(() => {
+              if (typeof currentClientId === 'number') return currentClientId as number;
+              const resolved = clients.find(c => c.userId === String(currentClientId) || c.userId === String(user?.id) || c.email === user?.email);
+              return resolved ? resolved.id : null;
+            })()}
           />
         )}
       </ModernPaper>
 
       {/* Form Dialog */}
-      <ReclamationForm 
-        open={openForm} 
-        reclamation={editing} 
-        onClose={() => {
-          console.log('Form closed');
-          setOpenForm(false);
-        }} 
-        onSave={handleSave} 
-        initialData={!isAdmin && !editing ? { clientId: currentClientId || user?.id || undefined } : undefined}
-        lockClient={!isAdmin && !editing && !!(currentClientId || user?.id)}
+      <ReclamationForm
+        open={openForm}
+        reclamation={editing}
+        onClose={() => { setOpenForm(false); }}
+        onSave={handleSave}
+        initialData={!canViewAll && !editing ? { clientId: currentClientId || user?.id || undefined } : undefined}
+        lockClient={!canViewAll && !editing && !!(currentClientId || user?.id)}
         currentUser={user as any}
-        isAdmin={isAdmin}
+        isAdmin={canViewAll}
       />
 
       {/* Snackbar */}

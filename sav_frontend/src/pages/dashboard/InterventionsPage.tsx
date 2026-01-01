@@ -11,26 +11,11 @@ import PageTitle from '../../components/common/PageTitle';
 import InterventionFilters from '../../components/interventions/InterventionFilters';
 import InterventionsTable from '../../components/interventions/InterventionsTable';
 import InterventionForm from '../../components/interventions/InterventionForm';
-import InterventionDetailsDialog from '../../components/interventions/InterventionDetailsDialog'; // IMPORTANT
+import InterventionDetailsDialog from '../../components/interventions/InterventionDetailsDialog';
 import { Intervention } from '../../types/intervention';
 import { interventionService } from '../../services/interventionService';
+import { technicienService } from '../../services/technicienService';
 import AuthContext from '../../contexts/AuthContext';
-
-// Animations
-const fadeIn = keyframes`
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
-`;
-
-// Styled Components
-const ModernPaper = styled(Paper)(({ theme }) => ({
-  borderRadius: '24px',
-  padding: '28px',
-  background: 'rgba(255, 255, 255, 0.98)',
-  border: '1px solid rgba(33, 150, 243, 0.15)',
-  boxShadow: '0 16px 40px rgba(33, 150, 243, 0.1)',
-  animation: `${fadeIn} 0.5s ease`,
-}));
 
 const ModernCard = styled(Card)(({ theme }) => ({
   borderRadius: '16px',
@@ -65,6 +50,21 @@ const GradientButton = styled(Button)(({ theme }) => ({
     boxShadow: '0 16px 32px rgba(33, 150, 243, 0.4)',
     background: 'linear-gradient(135deg, #1976D2 0%, #0097A7 100%)',
   },
+}));
+
+// Animations
+const fadeIn = keyframes`
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+`;
+
+const ModernPaper = styled(Paper)(({ theme }) => ({
+  borderRadius: '24px',
+  padding: '28px',
+  background: 'rgba(255, 255, 255, 0.98)',
+  border: '1px solid rgba(33, 150, 243, 0.15)',
+  boxShadow: '0 16px 40px rgba(33, 150, 243, 0.1)',
+  animation: `${fadeIn} 0.5s ease`,
 }));
 
 const InterventionsPage: React.FC = () => {
@@ -111,16 +111,42 @@ const InterventionsPage: React.FC = () => {
         setStats(null);
         return;
       }
-      if (!isAdmin && currentClientId) {
-        try {
-          const scoped = await interventionService.advancedSearch({ clientId: currentClientId } as any);
-          setItems(Array.isArray(scoped) ? scoped : []);
-          setStats(null);
-          return;
-        } catch (e) {
-          console.warn('Filtrage des interventions pour le client connecté indisponible', e);
+        if (isTechnicien) {
+          // Essayer de déterminer l'ID numérique du technicien depuis l'utilisateur courant
+          let techId: number = NaN;
+          try {
+            const cand = (user as any)?.technicienId ?? (user as any)?.technicianId ?? (user as any)?.technicien?.id ?? (user as any)?.technician?.id ?? user?.id;
+            techId = Number(cand);
+          } catch {}
+
+          if (!isNaN(techId) && isFinite(techId)) {
+            const data = await interventionService.byTechnicien(techId);
+            setItems(Array.isArray(data) ? data : []);
+            setStats(null);
+            return;
+          }
+
+          // Si pas d'ID technicien disponible dans l'utilisateur, tenter de résoudre via l'API des techniciens
+          try {
+            const all = await technicienService.getAll();
+            const match = all.find((t: any) => {
+              // comparer userId (string/number) ou email
+              if (!t) return false;
+              if (t.userId && String(t.userId) === String((user as any)?.id)) return true;
+              if (t.email && (user as any)?.email && t.email.toLowerCase() === (user as any).email.toLowerCase()) return true;
+              return false;
+            });
+            if (match) {
+              const data = await interventionService.byTechnicien(match.id);
+              setItems(Array.isArray(data) ? data : []);
+              setStats(null);
+              return;
+            }
+          } catch (err) {
+            console.warn('Erreur en résolvant le technicien via technicienService', err);
+          }
+          console.warn('Impossible de déterminer l\'ID technicien pour l\'utilisateur connecté', user);
         }
-      }
 
       const data = await interventionService.getAll();
       setItems(Array.isArray(data) ? data : []);
@@ -135,11 +161,12 @@ const InterventionsPage: React.FC = () => {
     }
   };
 
-  useEffect(() => { 
+  useEffect(() => {
     if (user) {
-      const roles = (user.roles || user.role || []).map((r: string) => (r.toLowerCase ? r.toLowerCase() : r));
-      setIsAdmin(Array.isArray(roles) ? roles.includes('admin') : roles === 'admin');
-      setIsTechnicien(Array.isArray(roles) ? roles.includes('technicien') : roles === 'technicien');
+      const rawRoles = Array.isArray(user.roles) ? user.roles : (user.role ? (Array.isArray(user.role) ? user.role : [user.role]) : []);
+      const roles = rawRoles.map((r: any) => String(r).toLowerCase());
+      setIsAdmin(roles.includes('admin'));
+      setIsTechnicien(roles.includes('technicien') || roles.includes('technician'));
       if (user.id) {
         const id = Number(user.id);
         if (!isNaN(id) && isFinite(id)) {
@@ -158,9 +185,10 @@ const InterventionsPage: React.FC = () => {
             setCurrentClientId(id);
           }
         }
-        const roles = (parsed?.roles || parsed?.role || []).map((r: string) => (r.toLowerCase ? r.toLowerCase() : r));
-        setIsAdmin(Array.isArray(roles) ? roles.includes('admin') : roles === 'admin');
-        setIsTechnicien(Array.isArray(roles) ? roles.includes('technicien') : roles === 'technicien');
+        const rawRoles = Array.isArray(parsed?.roles) ? parsed.roles : (parsed?.role ? (Array.isArray(parsed.role) ? parsed.role : [parsed.role]) : []);
+        const roles = rawRoles.map((r: any) => String(r).toLowerCase());
+        setIsAdmin(roles.includes('admin'));
+        setIsTechnicien(roles.includes('technicien') || roles.includes('technician'));
       }
     } catch {}
   }, [user]);
@@ -494,12 +522,14 @@ const InterventionsPage: React.FC = () => {
           <Box sx={{ flex: 1, minWidth: 280 }}>
             <InterventionFilters onSearch={handleSearch} isAdmin={isAdmin} />
           </Box>
-          <GradientButton 
-            startIcon={<Add />} 
-            onClick={handleCreate}
-          >
-            Nouvelle intervention
-          </GradientButton>
+          {(isAdmin || !isTechnicien) && (
+            <GradientButton 
+              startIcon={<Add />} 
+              onClick={handleCreate}
+            >
+              Nouvelle intervention
+            </GradientButton>
+          )}
         </Box>
 
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 3 }}>

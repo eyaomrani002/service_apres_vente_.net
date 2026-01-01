@@ -1,5 +1,5 @@
 // InterventionsTable.tsx - Version modernisée
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { 
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, 
   Paper, IconButton, Tooltip, Chip, Avatar, Box, Typography,
@@ -158,6 +158,8 @@ interface Props {
   onGenerateInvoice?: (id: number) => void;
 }
 
+import AuthContext from '../../contexts/AuthContext';
+
 const InterventionsTable: React.FC<Props> = ({ items, onEdit, onDelete, onView, onChangeStatus, onGenerateInvoice }) => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -199,6 +201,13 @@ const InterventionsTable: React.FC<Props> = ({ items, onEdit, onDelete, onView, 
     page * rowsPerPage, 
     page * rowsPerPage + rowsPerPage
   );
+
+  // Auth and roles
+  const auth = useContext(AuthContext as any);
+  const currentUser = auth?.user;
+  const isAdmin = auth?.hasRole?.('admin');
+  const isResponsable = auth?.hasRole?.('responsablesav') || auth?.hasRole?.('responsable');
+  const isTechnicien = auth?.hasRole?.('technicien');
 
   const getInitials = (name: string) => {
     const parts = name.split(' ');
@@ -471,45 +480,60 @@ const InterventionsTable: React.FC<Props> = ({ items, onEdit, onDelete, onView, 
                           <Visibility fontSize="small" />
                         </ActionButton>
                       </Tooltip>
-                      {onChangeStatus && intervention.statut !== 'En cours' && (
-                        <Tooltip title="Passer en cours" arrow>
-                          <ActionButton size="small" className="edit" onClick={() => onChangeStatus(intervention.id, 'En cours')}>
-                            <Schedule fontSize="small" />
-                          </ActionButton>
-                        </Tooltip>
+                      {/* Change status: allowed for admin/responsable or assigned technicien */}
+                      {onChangeStatus && (isAdmin || isResponsable || (isTechnicien && Number(currentUser?.id) === intervention.technicienId)) && (
+                        <> 
+                          {intervention.statut !== 'En cours' && (
+                            <Tooltip title="Passer en cours" arrow>
+                              <ActionButton size="small" className="edit" onClick={() => onChangeStatus(intervention.id, 'En cours')}>
+                                <Schedule fontSize="small" />
+                              </ActionButton>
+                            </Tooltip>
+                          )}
+                          {intervention.statut !== 'Terminée' && (
+                            <Tooltip title="Marquer terminée" arrow>
+                              <ActionButton size="small" className="edit" onClick={() => onChangeStatus(intervention.id, 'Terminée')}>
+                                <CheckCircle fontSize="small" color="success" />
+                              </ActionButton>
+                            </Tooltip>
+                          )}
+                        </>
                       )}
-                      {onChangeStatus && intervention.statut !== 'Terminée' && (
-                        <Tooltip title="Marquer terminée" arrow>
-                          <ActionButton size="small" className="edit" onClick={() => onChangeStatus(intervention.id, 'Terminée')}>
-                            <CheckCircle fontSize="small" color="success" />
-                          </ActionButton>
-                        </Tooltip>
-                      )}
-                      {onGenerateInvoice && (
+
+                      {/* Generate invoice: only responsable or admin */}
+                      {onGenerateInvoice && (isAdmin || isResponsable) && (
                         <Tooltip title="Générer facture" arrow>
                           <ActionButton size="small" className="view" onClick={() => onGenerateInvoice(intervention.id)}>
                             <ReceiptLong fontSize="small" />
                           </ActionButton>
                         </Tooltip>
                       )}
-                      <Tooltip title="Modifier" arrow>
-                        <ActionButton 
-                          size="small" 
-                          className="edit"
-                          onClick={() => onEdit(intervention)}
-                        >
-                          <Edit fontSize="small" />
-                        </ActionButton>
-                      </Tooltip>
-                      <Tooltip title="Supprimer" arrow>
-                        <ActionButton 
-                          size="small" 
-                          className="delete"
-                          onClick={() => onDelete(intervention.id)}
-                        >
-                          <Delete fontSize="small" />
-                        </ActionButton>
-                      </Tooltip>
+
+                      {/* Edit: admin/responsable or assigned technicien can edit */}
+                      {(isAdmin || isResponsable || (isTechnicien && Number(currentUser?.id) === intervention.technicienId)) && (
+                        <Tooltip title="Modifier" arrow>
+                          <ActionButton 
+                            size="small" 
+                            className="edit"
+                            onClick={() => onEdit(intervention)}
+                          >
+                            <Edit fontSize="small" />
+                          </ActionButton>
+                        </Tooltip>
+                      )}
+
+                      {/* Delete: only admin or responsable */}
+                      {(isAdmin || isResponsable) && (
+                        <Tooltip title="Supprimer" arrow>
+                          <ActionButton 
+                            size="small" 
+                            className="delete"
+                            onClick={() => onDelete(intervention.id)}
+                          >
+                            <Delete fontSize="small" />
+                          </ActionButton>
+                        </Tooltip>
+                      )}
                     </Box>
                   </TableCell>
                 </StyledTableRow>

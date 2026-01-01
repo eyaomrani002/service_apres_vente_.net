@@ -481,7 +481,7 @@ namespace InterventionAPI.Controllers
 
         // POST: api/interventions/5/creer-facture
         [HttpPost("{id}/creer-facture")]
-        public IActionResult CreerFacturePourIntervention(int id)
+        public async Task<IActionResult> CreerFacturePourIntervention(int id)
         {
             try
             {
@@ -498,6 +498,57 @@ namespace InterventionAPI.Controllers
                 var facture = _repository.CreerFacturePourIntervention(id);
                 if (facture == null)
                     return BadRequest("Erreur lors de la création de la facture");
+
+                // Tenter de compléter les informations client / montant à partir de la réclamation + ClientAPI
+                try
+                {
+                    var reclResp = await _httpClient.SendAsync(CreateRequest(HttpMethod.Get, $"https://localhost:7076/apigateway/reclamations/{intervention.ReclamationId}"));
+                    if (reclResp.IsSuccessStatusCode)
+                    {
+                        var reclJson = await reclResp.Content.ReadAsStringAsync();
+                        var reclDoc = System.Text.Json.JsonDocument.Parse(reclJson);
+                        if (reclDoc.RootElement.TryGetProperty("clientId", out var cidEl) && cidEl.ValueKind == System.Text.Json.JsonValueKind.Number)
+                        {
+                            var clientId = cidEl.GetInt32();
+                            // Récupérer les détails du client
+                            try
+                            {
+                                var clientResp = await _httpClient.SendAsync(CreateRequest(HttpMethod.Get, $"https://localhost:7076/apigateway/clients/{clientId}"));
+                                if (clientResp.IsSuccessStatusCode)
+                                {
+                                    var clientJson = await clientResp.Content.ReadAsStringAsync();
+                                    var clientDoc = System.Text.Json.JsonDocument.Parse(clientJson);
+                                    string nom = clientDoc.RootElement.TryGetProperty("nom", out var n) ? n.GetString() ?? facture.ClientNom : facture.ClientNom;
+                                    string adresse = clientDoc.RootElement.TryGetProperty("adresse", out var a) ? a.GetString() ?? facture.ClientAdresse : facture.ClientAdresse;
+                                    string email = clientDoc.RootElement.TryGetProperty("email", out var e) ? e.GetString() ?? facture.ClientEmail : facture.ClientEmail;
+
+                                    facture.ClientNom = nom;
+                                    facture.ClientAdresse = adresse;
+                                    facture.ClientEmail = email;
+                                }
+                            }
+                            catch (Exception exClient)
+                            {
+                                _logger.LogWarning(exClient, "Impossible de récupérer les détails du client {ClientId} après création facture", clientId);
+                            }
+                        }
+                    }
+                }
+                catch (Exception exFill)
+                {
+                    _logger.LogWarning(exFill, "Impossible de compléter automatiquement les informations de la facture pour l'intervention {InterventionId}", id);
+                }
+
+                // S'assurer que le montant est renseigné correctement
+                try
+                {
+                    facture.MontantHT = intervention.CoutTotal ?? (intervention.CoutPieces ?? 0) + (intervention.CoutMainOeuvre ?? 0);
+                    _repository.UpdateFacture(facture);
+                }
+                catch (Exception exUpdate)
+                {
+                    _logger.LogWarning(exUpdate, "Impossible de mettre à jour la facture créée pour l'intervention {InterventionId}", id);
+                }
 
                 // Notifier le client de la facture créée
                 _ = Task.Run(async () =>

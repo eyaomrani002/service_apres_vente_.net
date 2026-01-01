@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useContext } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -22,6 +22,7 @@ import { Client } from '../../types/client';
 import { clientService } from '../../services/clientService';
 import { reclamationService } from '../../services/reclamationService';
 import { interventionService } from '../../services/interventionService';
+import AuthContext from '../../contexts/AuthContext';
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: scale(0.97); }
@@ -72,6 +73,12 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
   const [clientInterventionMap, setClientInterventionMap] = useState<Map<number, Intervention[]>>(new Map());
   const [error, setError] = useState<string>('');
 
+  // Use AuthContext for current user and roles
+  const { user: authUser } = useContext(AuthContext) as any;
+  const rolesArr = Array.isArray(authUser?.roles) ? authUser.roles.map((r: string) => r.toLowerCase()) : typeof authUser?.role === 'string' ? [String(authUser.role).toLowerCase()] : [];
+  const isClient = rolesArr.includes('client');
+  const isAdmin = rolesArr.includes('admin');
+
   // Récupérer tous les utilisateurs avec rôle Client
   const fetchAuthClients = async (): Promise<Client[]> => {
     try {
@@ -93,7 +100,9 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
       return users
         .filter((u: any) => {
           const roles = Array.isArray(u.roles) ? u.roles : [];
-          return roles.some((r: string) => r?.toLowerCase() === 'client');
+          const hasClient = roles.some((r: string) => r?.toLowerCase() === 'client');
+          const hasAdmin = roles.some((r: string) => r?.toLowerCase() === 'admin');
+          return hasClient && !hasAdmin; // exclude users that are admin
         })
         .map((u: any, idx: number) => ({
           id: -(idx + 1000),
@@ -113,39 +122,47 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
   const loadAllClients = async () => {
     setLoading(prev => ({ ...prev, clients: true }));
     setError('');
-    
     try {
-      const apiClients = await clientService.getAll().catch(() => []);
-      const validApiClients = Array.isArray(apiClients) ? apiClients : [];
-      const authClients = await fetchAuthClients();
-
-      const allClients = [...validApiClients];
-      const emailSet = new Set(validApiClients.map(c => c.email?.toLowerCase()));
-
-      authClients.forEach(client => {
-        if (client.email && !emailSet.has(client.email.toLowerCase())) {
-          allClients.push(client);
-          emailSet.add(client.email.toLowerCase());
-        }
-      });
-
-      setClients(allClients);
-      
-      // Pré-sélectionner le client si on édite une facture
-      if (facture && facture.clientEmail) {
-        const matchingClient = allClients.find(c => 
-          c.email?.toLowerCase() === facture.clientEmail?.toLowerCase()
-        );
-        if (matchingClient) {
-          setSelectedClientId(String(matchingClient.id));
-          // Remplir automatiquement les champs client
+      if (isClient && authUser) {
+        // Pour le rôle client, charger uniquement ses propres infos
+        const clientApi = await clientService.getByEmail(authUser.email).catch(() => null);
+        if (clientApi) {
+          setClients([clientApi]);
+          setSelectedClientId(String(clientApi.id));
           setForm(prev => ({
             ...prev,
-            clientNom: matchingClient.nom,
-            clientEmail: matchingClient.email,
-            clientAdresse: matchingClient.adresse,
+            clientNom: clientApi.nom,
+            clientEmail: clientApi.email,
+            clientAdresse: clientApi.adresse,
           }));
         }
+        return;
+      }
+      // Sinon, charger tous les clients (admin/responsable)
+      const apiClients = await clientService.getAll().catch(() => []);
+      const validApiClients = Array.isArray(apiClients) ? apiClients : [];
+
+      if (isAdmin) {
+        // For admins: fetch auth users that have the 'client' role and show them
+        const authClients = await fetchAuthClients().catch(() => []);
+        const authEmails = new Set((authClients || []).map((a: any) => (a.email || '').toLowerCase()));
+        const apiByEmail = new Map((validApiClients || []).map((c: any) => [String(c.email || '').toLowerCase(), c]));
+
+        // Prefer API client records when an auth user has a matching API client (to keep numeric ids)
+        const merged: Client[] = [];
+        for (const ac of (authClients || [])) {
+          const email = (ac.email || '').toLowerCase();
+          if (apiByEmail.has(email)) {
+            merged.push(apiByEmail.get(email)!);
+          } else {
+            merged.push(ac);
+          }
+        }
+
+        setClients(merged);
+      } else {
+        // Non-admins see API clients only
+        setClients(validApiClients);
       }
     } catch (err) {
       console.error('Erreur lors du chargement des clients:', err);
@@ -337,6 +354,10 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
         };
         
         setForm(updatedForm);
+        // If editing an existing facture, set selected client if available
+        if ((facture as any).clientId) {
+          setSelectedClientId(String((facture as any).clientId));
+        }
       } 
       // Si nouvelle facture avec intervention pré-remplie
       else if (prefillInterventionId) {
@@ -348,6 +369,24 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
                                0;
         }
         setForm(baseForm);
+        // If an intervention is prefilled, try to resolve and select the related client
+        if (intervention) {
+          (async () => {
+            try {
+              const recl = await reclamationService.getById(intervention.reclamationId).catch(() => null);
+              let clientId: number | undefined;
+              if (recl?.clientId) clientId = recl.clientId;
+              else if (intervention.clientId) clientId = intervention.clientId;
+              if (clientId) {
+                setSelectedClientId(String(clientId));
+                const clientDetails = await clientService.getById(clientId).catch(() => null);
+                if (clientDetails) {
+                  setForm(prev => ({ ...prev, clientNom: clientDetails.nom, clientEmail: clientDetails.email, clientAdresse: clientDetails.adresse || prev.clientAdresse }));
+                }
+              }
+            } catch (e) {}
+          })();
+        }
       }
       // Nouvelle facture vierge
       else {
@@ -387,7 +426,7 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
 
   // Soumettre le formulaire
   const handleSubmit = async () => {
-    // Validation
+    // Validation minimale
     if (!form.interventionId) {
       setError('Veuillez sélectionner une intervention');
       return;
@@ -398,19 +437,78 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
       return;
     }
 
+    // Si l'adresse manque, tenter une dernière récupération automatique avant de bloquer
+    if (!form.clientAdresse || String(form.clientAdresse).trim() === '') {
+      try {
+        // Priorité : client résolu via clientService.getAll
+        const clients = await clientService.getAll();
+        const authRaw = localStorage.getItem('user');
+        let authUser: any = null;
+        if (authRaw) authUser = JSON.parse(authRaw);
+        const resolved = (clients || []).find((c: any) => String(c.userId) === String(authUser?.id) || c.email === authUser?.email);
+        if (resolved && resolved.adresse) {
+          setForm(prev => ({ ...prev, clientAdresse: resolved.adresse }));
+        }
+
+        // Si toujours vide, tenter par email
+        if ((!form.clientAdresse || String(form.clientAdresse).trim() === '') && form.clientEmail) {
+          const byEmail = await clientService.getByEmail(String(form.clientEmail)).catch(() => null);
+          if (byEmail && byEmail.adresse) setForm(prev => ({ ...prev, clientAdresse: byEmail.adresse }));
+        }
+
+        // Si toujours vide, tenter via l'intervention -> réclamation -> client
+        if ((!form.clientAdresse || String(form.clientAdresse).trim() === '') && form.interventionId) {
+          const intr = interventions.find(i => i.id === Number(form.interventionId));
+          if (intr) {
+            const recl = await reclamationService.getById(intr.reclamationId).catch(() => null);
+            if (recl?.clientId) {
+              const clientFull = await clientService.getById(recl.clientId).catch(() => null);
+              if (clientFull && clientFull.adresse) setForm(prev => ({ ...prev, clientAdresse: clientFull.adresse }));
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Erreur lors de la récupération automatique de l\'adresse client', e);
+      }
+    }
+
+    // Après tentatives, si adresse manquante -> bloquer et demander saisie
+    if (!form.clientAdresse || String(form.clientAdresse).trim() === '') {
+      setError('Adresse client requise — veuillez la saisir');
+      return;
+    }
+
     setLoading(prev => ({ ...prev, submission: true }));
     setError('');
 
     try {
+      // Résoudre l'id numérique du client comme pour la réclamation
+      let clientIdNum: number | undefined;
+      try {
+        const clients = await clientService.getAll();
+        const authRaw = localStorage.getItem('user');
+        let authUser: any = null;
+        if (authRaw) authUser = JSON.parse(authRaw);
+        const resolved = (clients || []).find((c: any) => String(c.userId) === String(authUser?.id) || c.email === authUser?.email);
+        if (resolved && resolved.id) clientIdNum = resolved.id;
+      } catch {}
+
       const payload: Partial<Facture> = {
-        ...form,
-        montantHT: form.montantHT || 0,
-        tva: form.tva || 0.19,
-        montantTTC: (form.montantHT || 0) * (1 + (form.tva || 0.19)),
-        statut: form.statut || 'En attente',
+        interventionId: Number(form.interventionId),
+        numeroFacture: form.numeroFacture,
         dateFacture: form.dateFacture ? `${form.dateFacture}T00:00:00` : new Date().toISOString(),
-        intervention: { id: form.interventionId } as any,
+        clientNom: form.clientNom || '',
+        clientEmail: form.clientEmail || '',
+        clientAdresse: form.clientAdresse || '',
+        montantHT: Number(form.montantHT) || 0,
+        tva: Number(form.tva) || 0.19,
+        statut: form.statut || 'En attente',
+        descriptionServices: form.descriptionServices,
+        modePaiement: form.modePaiement,
+        clientId: clientIdNum,
       };
+
+      console.debug('FactureForm: creating payload', payload);
 
       await onSave(payload, facture?.id);
       onClose();
@@ -461,43 +559,39 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
         <Grid container spacing={3}>
           {/* Section Client */}
           <Grid item size={{ xs: 12 }}>
-            <TextField
-              select
-              label="Sélectionner un client"
-              fullWidth
-              value={selectedClientId}
-              onChange={(e) => handleClientSelect(e.target.value)}
-              disabled={loading.clients}
-              helperText="Sélectionnez un client pour pré-remplir automatiquement ses informations"
-              InputProps={{
-                startAdornment: loading.clients ? (
-                  <CircularProgress size={20} sx={{ mr: 1 }} />
-                ) : (
-                  <Person sx={{ mr: 1, color: '#1976d2' }} />
-                ),
-              }}
-            >
-              <MenuItem value="">
-                <em>-- Sélectionner un client --</em>
-              </MenuItem>
-              {clients.map((client) => (
-                <MenuItem key={client.id} value={client.id}>
-                  <Box>
-                    <strong>{client.nom}</strong>
-                    {client.email && (
-                      <Box component="div" sx={{ fontSize: '0.85em', color: '#666', mt: 0.5 }}>
-                        {client.email}
-                      </Box>
-                    )}
-                    {client.telephone && (
-                      <Box component="div" sx={{ fontSize: '0.85em', color: '#666' }}>
-                        📞 {client.telephone}
-                      </Box>
-                    )}
-                  </Box>
+            {isClient ? (
+              <TextField
+                label="Client"
+                fullWidth
+                value={form.clientNom || ''}
+                disabled
+                InputProps={{
+                  startAdornment: <Person sx={{ mr: 1, color: '#1976d2' }} />,
+                }}
+              />
+            ) : (
+              <TextField
+                select
+                label="Client"
+                fullWidth
+                value={selectedClientId || ''}
+                onChange={(e) => handleClientSelect(String(e.target.value))}
+                disabled={loading.clients}
+                helperText="Sélectionnez un client"
+                InputProps={{
+                  startAdornment: <Person sx={{ mr: 1, color: '#1976d2' }} />,
+                }}
+              >
+                <MenuItem value="">
+                  <em>-- Sélectionner un client --</em>
                 </MenuItem>
-              ))}
-            </TextField>
+                {clients.map((c) => (
+                  <MenuItem key={c.id} value={String(c.id)}>
+                    {c.nom} {c.email ? `(${c.email})` : ''}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
           </Grid>
 
           {/* Informations client (automatiquement remplies) */}

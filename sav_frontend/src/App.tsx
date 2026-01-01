@@ -67,15 +67,16 @@ function AppContent() {
           <Route path="/dashboard" element={<ProtectedRoute element={<DashboardPage />} roles={['admin']} />} />
           <Route path="/catalog" element={<ProtectedRoute element={<CatalogPage />} />} />
           <Route path="/cart" element={<ProtectedRoute element={<CartPage />} />} />
-          <Route path="/articles" element={<ProtectedRoute element={<ArticlesPage />} roles={['admin']} />} />
-          <Route path="/clients" element={<ProtectedRoute element={<ClientsPage />} roles={['admin']} />} />
-          <Route path="/techniciens" element={<ProtectedRoute element={<TechnicienPage />} roles={['admin']} />} />
+          <Route path="/articles" element={<ProtectedRoute element={<ArticlesPage />} roles={['admin', 'responsablesav']} />} />
+          <Route path="/clients" element={<ProtectedRoute element={<ClientsPage />} roles={['admin','responsablesav']} />} />
+          <Route path="/techniciens" element={<ProtectedRoute element={<TechnicienPage />} roles={['admin','responsablesav']} />} />
           <Route path="/users" element={<ProtectedRoute element={<UsersPage />} roles={['admin']} />} />
           <Route path="/reclamations" element={<ProtectedRoute element={<ReclamationsPage />} roles={['client', 'technicien', 'responsablesav', 'admin']} />} />
-          <Route path="/interventions" element={<ProtectedRoute element={<InterventionsPage />} roles={['admin']} />} />
+          <Route path="/interventions" element={<ProtectedRoute element={<InterventionsPage />} roles={['admin','responsablesav','technicien']} />} />
           <Route path="/calendar" element={<ProtectedRoute element={<CalendarPage />} roles={['admin', 'responsablesav', 'technicien']} />} />
           <Route path="/reports" element={<ProtectedRoute element={<ReportingPage />} roles={['admin', 'responsablesav', 'technicien']} />} />
-          <Route path="/factures" element={<ProtectedRoute element={<FacturesPage />} roles={['admin']} />} />
+          {/* Correction ici : autoriser aussi le rôle client pour /factures */}
+          <Route path="/factures" element={<ProtectedRoute element={<FacturesPage />} roles={['admin', 'responsablesav', 'client']} />} />
           <Route path="/profile" element={<ProtectedRoute element={<ProfilePage />} />} />
         </Route>
 

@@ -133,7 +133,7 @@ const ReclamationForm: React.FC<Props> = ({ open, reclamation, onClose, onSave, 
       const articleId = initialData?.articleId;
       
       setForm(reclamation ? { ...reclamation } : { 
-        clientId: (clientId && !isNaN(clientId) && isFinite(clientId)) ? clientId : undefined, 
+        clientId: clientId || undefined, 
         articleId: (articleId && !isNaN(articleId) && isFinite(articleId)) ? articleId : undefined,
         sujet: '', 
         description: '', 
@@ -189,6 +189,7 @@ const ReclamationForm: React.FC<Props> = ({ open, reclamation, onClose, onSave, 
     (async () => {
       try {
         const data = await articleService.getAll();
+        console.log('ReclamationForm articles loaded:', data);
         if (!ignore) setArticles(Array.isArray(data) ? data : []);
       } catch {
         if (!ignore) setArticles([]);
@@ -234,9 +235,18 @@ const ReclamationForm: React.FC<Props> = ({ open, reclamation, onClose, onSave, 
   };
 
   const handleSubmit = async () => {
+    console.log('ReclamationForm handleSubmit called', { form, lockClient, isAdmin });
     if (!validate()) return;
 
-    const payload = { ...form };
+    const payload = { 
+      ...form,
+      description: form.sujet && form.description 
+        ? `${form.sujet}\n\n${form.description}` 
+        : (form.sujet || form.description || '')
+    };
+
+    // Supprimer le champ sujet car l'API ne l'attend pas
+    delete (payload as any).sujet;
 
     if (!lockClient && form.clientId) {
       const selected = clients.find(c => c.id === form.clientId);

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useContext } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Box, Grid, CircularProgress, Snackbar, Alert, Button, TextField, Stack } from '@mui/material';
 import { styled, keyframes } from '@mui/material/styles';
@@ -11,6 +11,9 @@ import FactureForm from '../../components/factures/FactureForm';
 import FactureDetailsDialog from '../../components/factures/FactureDetailsDialog';
 import { Facture, FactureFilterParams } from '../../types/facture';
 import { factureService } from '../../services/factureService';
+import AuthContext from '../../contexts/AuthContext';
+import { clientService } from '../../services/clientService';
+import { Client } from '../../types/client';
 import { interventionService } from '../../services/interventionService';
 
 const fadeIn = keyframes`
@@ -58,14 +61,130 @@ const FacturesPage: React.FC = () => {
   const [quickSearchTerm, setQuickSearchTerm] = useState('');
   const [quickDateDebut, setQuickDateDebut] = useState('');
   const [quickDateFin, setQuickDateFin] = useState('');
-  const [, setLoadingAction] = useState(false);
+  const [loadingAction, setLoadingAction] = useState(false);
+
+  // Use AuthContext
+  const { user } = useContext(AuthContext) as any;
+  const [clients, setClients] = useState<Client[]>([]);
+  const [currentClientId, setCurrentClientId] = useState<string | number | null>(null);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [isResponsable, setIsResponsable] = useState<boolean>(false);
+  const canViewAll = isAdmin || isResponsable;
+
+  // Load all clients for mapping
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      try {
+        const c = await clientService.getAll();
+        if (!ignore) setClients(Array.isArray(c) ? c : []);
+      } catch {
+        if (!ignore) setClients([]);
+      }
+    })();
+    return () => { ignore = true; };
+  }, []);
+
+  // Resolve current clientId and roles - FIXED LOGIC
+  useEffect(() => {
+    if (user) {
+      const roles = Array.isArray(user.roles) 
+        ? user.roles 
+        : typeof user.role === 'string' 
+          ? [user.role] 
+          : [];
+      const rolesLower = roles.map((r: string) => r.toLowerCase());
+      
+      // Determine roles
+      const isAdminLocal = rolesLower.includes('admin');
+      const isResponsableLocal = rolesLower.includes('responsablesav');
+      setIsAdmin(isAdminLocal);
+      setIsResponsable(isResponsableLocal);
+
+      const canViewAllLocal = isAdminLocal || isResponsableLocal;
+
+      if (!canViewAllLocal && user.email) {
+        // For non-admin users, we need to find their client record
+        console.log('Recherche du client pour l\'utilisateur:', user.email);
+        
+        // Method 1: Try to find by email in clients list
+        const matchingClient = clients.find(c => 
+          c.email?.toLowerCase() === user.email?.toLowerCase()
+        );
+        
+        if (matchingClient) {
+          console.log('Client trouvé par email:', matchingClient);
+          setCurrentClientId(matchingClient.id);
+        } else {
+          // Method 2: Try to get client by email from API
+          (async () => {
+            try {
+              const clientByEmail = await clientService.getByEmail(user.email);
+              if (clientByEmail && clientByEmail.id) {
+                console.log('Client trouvé via API getByEmail:', clientByEmail);
+                setCurrentClientId(clientByEmail.id);
+              } else {
+                console.warn('Aucun client trouvé pour l\'email:', user.email);
+                setCurrentClientId(null);
+              }
+            } catch (error) {
+              console.warn('Erreur lors de la recherche du client par email:', error);
+              setCurrentClientId(null);
+            }
+          })();
+        }
+      } else if (canViewAllLocal) {
+        // Admin users can see all factures
+        setCurrentClientId(null);
+      }
+    }
+  }, [user, clients]);
 
   const loadFactures = async (query: FactureFilterParams = {}) => {
     setLoading(true);
     try {
-      const data = Object.keys(query).length > 0 ? await factureService.advancedSearch(query) : await factureService.getAll();
-      setFactures(data);
+      const data = Object.keys(query).length > 0 
+        ? await factureService.advancedSearch(query) 
+        : await factureService.getAll();
+      
+      console.log('FacturesPage: factures brutes', data);
+      console.log('FacturesPage: user roles', user?.roles || user?.role);
+      console.log('FacturesPage: isAdmin', isAdmin);
+      console.log('FacturesPage: isResponsable', isResponsable);
+      console.log('FacturesPage: currentClientId', currentClientId);
+      console.log('FacturesPage: user email', user?.email);
+
+      let final = Array.isArray(data) ? data : [];
+      
+      // Filter for non-admin/responsable users
+      if (!canViewAll && currentClientId) {
+        console.log('Filtrage des factures pour le client ID:', currentClientId);
+        
+        // First, try to find factures by clientId
+        final = final.filter(f => f.clientId === currentClientId);
+        
+        // If no results, try to filter by email
+        if (final.length === 0 && user?.email) {
+          console.log('Aucune facture trouvée par clientId, tentative par email:', user.email);
+          final = (Array.isArray(data) ? data : []).filter(f => 
+            f.clientEmail?.toLowerCase() === user.email?.toLowerCase()
+          );
+        }
+        
+        console.log('FacturesPage: factures filtrées', final);
+      } else if (!canViewAll && !currentClientId && user?.email) {
+        // Fallback: if no clientId but we have user email, filter by email
+        console.log('Filtrage des factures par email (fallback):', user.email);
+        final = (Array.isArray(data) ? data : []).filter(f => 
+          f.clientEmail?.toLowerCase() === user.email?.toLowerCase()
+        );
+      }
+      
+      // For admin users, show all factures
+      console.log('FacturesPage: factures finales à afficher', final);
+      setFactures(final);
     } catch (error: any) {
+      console.error('Erreur lors du chargement des factures:', error);
       setMessage(error.message || 'Impossible de charger les factures');
       setMessageType('error');
     } finally {
@@ -101,8 +220,15 @@ const FacturesPage: React.FC = () => {
     }
   };
 
+  // Load factures when user, clients, or currentClientId changes
   useEffect(() => {
-    loadFactures();
+    if (user) {
+      loadFactures();
+    }
+  }, [user, clients, currentClientId, canViewAll]);
+
+  // Load interventions once on mount
+  useEffect(() => {
     loadInterventions();
   }, []);
 
@@ -111,6 +237,15 @@ const FacturesPage: React.FC = () => {
     if (state && state.interventionId) {
       setPrefillInterventionId(Number(state.interventionId));
       setOpenForm(true);
+      navigate(location.pathname, { replace: true });
+    }
+
+    // Si on arrive depuis la génération automatique d'une facture, afficher le détail
+    if (state && state.createdFacture) {
+      const created: Facture = state.createdFacture;
+      // Préfixer la liste pour affichage immédiat
+      setFactures(prev => [created, ...(prev || [])]);
+      setSelectedFacture(created);
       navigate(location.pathname, { replace: true });
     }
   }, [location.state, location.pathname, navigate]);
@@ -174,11 +309,23 @@ const FacturesPage: React.FC = () => {
   };
 
   const handleEdit = (facture: Facture) => {
+    // Only allow admin to edit
+    if (!isAdmin) {
+      setMessage('Seuls les administrateurs peuvent modifier les factures');
+      setMessageType('error');
+      return;
+    }
     setEditingFacture(facture);
     setOpenForm(true);
   };
 
   const handleMarkPaid = async (facture: Facture) => {
+    // Only allow admin to mark as paid
+    if (!isAdmin) {
+      setMessage('Seuls les administrateurs peuvent modifier le statut des factures');
+      setMessageType('error');
+      return;
+    }
     try {
       setLoadingAction(true);
       await factureService.changeStatus(facture.id, 'Payée');
@@ -301,7 +448,7 @@ const FacturesPage: React.FC = () => {
     <Box sx={{ p: { xs: 2, md: 3 } }}>
       <PageTitle
         title="Facturation"
-        subtitle="Suivi et création des factures"
+        subtitle={canViewAll ? "Gestion complète des factures" : "Vos factures"}
         breadcrumbs={[{ label: 'Tableau de bord', href: '/dashboard' }, { label: 'Factures' }]}
       />
 
@@ -310,7 +457,7 @@ const FacturesPage: React.FC = () => {
           <StatsCard title="Factures" value={stats.total} subtitle={`${stats.enAttente} en attente`} />
         </Grid>
         <Grid item xs={12} sm={4}>
-          <StatsCard title="Payées" value={stats.payees} color="success" subtitle="Toutes les factures réglées" />
+          <StatsCard title="Payées" value={stats.payees} color="success" subtitle="Factures réglées" />
         </Grid>
         <Grid item xs={12} sm={4}>
           <StatsCard title="Montant moyen" value={`${stats.avg.toFixed(0)} €`} color="warning" subtitle="TTC" />
@@ -318,15 +465,21 @@ const FacturesPage: React.FC = () => {
       </Grid>
 
       <Panel sx={{ mb: 4 }}>
+        {/* Section Filtres - Toujours visible */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, mb: 3 }}>
           <Box sx={{ flex: 1, minWidth: 260 }}>
             <FactureFilters onSearch={handleSearch} />
           </Box>
-          <GradientButton startIcon={<Add />} onClick={() => { setEditingFacture(null); setOpenForm(true); }}>
-            Créer une facture
-          </GradientButton>
+          
+          {/* Bouton Ajouter - Admin et responsablesav */}
+          {canViewAll && (
+            <GradientButton startIcon={<Add />} onClick={() => { setEditingFacture(null); setOpenForm(true); }}>
+              Créer une facture
+            </GradientButton>
+          )}
         </Box>
 
+        {/* Filtres rapides - Toujours visible */}
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 3 }}>
           <Button size="small" variant="contained" color="warning" onClick={loadImpayees}>Impayées</Button>
           <TextField size="small" type="date" label="Début" InputLabelProps={{ shrink: true }} value={quickDateDebut} onChange={(e) => setQuickDateDebut(e.target.value)} />
@@ -340,11 +493,18 @@ const FacturesPage: React.FC = () => {
           <Button size="small" variant="outlined" onClick={quickSearch}>Rechercher</Button>
         </Stack>
 
+        {/* Tableau des factures */}
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
             <CircularProgress size={48} sx={{ color: '#2196F3' }} />
           </Box>
-        ) : (
+        ) : factures.length === 0 ? (
+          <Box sx={{ textAlign: 'center', color: 'text.secondary', py: 6, fontSize: 18 }}>
+            {isAdmin 
+              ? 'Aucune facture trouvée.' 
+              : 'Aucune facture trouvée pour votre compte.'}
+          </Box>
+          ) : (
           <FacturesTable 
             factures={factures} 
             onView={handleView} 
@@ -355,15 +515,19 @@ const FacturesPage: React.FC = () => {
         )}
       </Panel>
 
-      <FactureForm
-        open={openForm}
-        interventions={interventionsSansFacture}
-        facture={editingFacture}
-        prefillInterventionId={prefillInterventionId}
-        onClose={() => { setOpenForm(false); setPrefillInterventionId(undefined); }}
-        onSave={handleSave}
-      />
+      {/* Formulaire de facture - Admin et responsablesav */}
+      {canViewAll && (
+        <FactureForm
+          open={openForm}
+          interventions={interventionsSansFacture}
+          facture={editingFacture}
+          prefillInterventionId={prefillInterventionId}
+          onClose={() => { setOpenForm(false); setPrefillInterventionId(undefined); }}
+          onSave={handleSave}
+        />
+      )}
 
+      {/* Dialogue de détails - Visible pour tous */}
       <FactureDetailsDialog
         open={!!selectedFacture}
         facture={selectedFacture}

@@ -71,10 +71,10 @@ function AppContent() {
           <Route path="/clients" element={<ProtectedRoute element={<ClientsPage />} roles={['admin','responsablesav']} />} />
           <Route path="/techniciens" element={<ProtectedRoute element={<TechnicienPage />} roles={['admin','responsablesav']} />} />
           <Route path="/users" element={<ProtectedRoute element={<UsersPage />} roles={['admin']} />} />
-          <Route path="/reclamations" element={<ProtectedRoute element={<ReclamationsPage />} roles={['client', 'technicien', 'responsablesav', 'admin']} />} />
+          <Route path="/reclamations" element={<ProtectedRoute element={<ReclamationsPage />} roles={['client', 'responsablesav', 'admin']} />} />
           <Route path="/interventions" element={<ProtectedRoute element={<InterventionsPage />} roles={['admin','responsablesav','technicien']} />} />
           <Route path="/calendar" element={<ProtectedRoute element={<CalendarPage />} roles={['admin', 'responsablesav', 'technicien']} />} />
-          <Route path="/reports" element={<ProtectedRoute element={<ReportingPage />} roles={['admin', 'responsablesav', 'technicien']} />} />
+          <Route path="/reports" element={<ProtectedRoute element={<ReportingPage />} roles={['admin', 'responsablesav', 'technicien', 'client']} />} />
           {/* Correction ici : autoriser aussi le rôle client pour /factures */}
           <Route path="/factures" element={<ProtectedRoute element={<FacturesPage />} roles={['admin', 'responsablesav', 'client']} />} />
           <Route path="/profile" element={<ProtectedRoute element={<ProfilePage />} />} />

@@ -103,6 +103,24 @@ const GradientButton = styled(Button)(({ theme }) => ({
   },
 }));
 
+// Normalise un identifiant pour comparer avec les GUID générés côté backend
+const normalizeIdForCompare = (value?: string | number | null) => {
+  if (!value) return undefined;
+  const str = String(value);
+  const guidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+  if (guidRegex.test(str)) return str;
+
+  const num = Number(str);
+  if (!Number.isNaN(num)) {
+    const hex = num.toString(16).padStart(32, '0');
+    return `${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20, 32)}`;
+  }
+
+  const hash = Math.abs(str.split('').reduce((acc, ch) => ((acc << 5) - acc) + ch.charCodeAt(0), 0));
+  const hex = hash.toString(16).padStart(32, '0');
+  return `${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20, 32)}`;
+};
+
 const ReportingPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -139,48 +157,75 @@ const ReportingPage: React.FC = () => {
   const isTechnicien = useMemo(() => hasRole('technicien'), [hasRole]);
   const isResp = useMemo(() => hasRole('responsablesav'), [hasRole]);
   const isAdmin = useMemo(() => hasRole('admin'), [hasRole]);
-  const canAccess = isTechnicien || isResp || isAdmin;
-  const canGenerate = isResp || isAdmin;
+  const isClient = useMemo(() => hasRole('client'), [hasRole]);
+
+  const normalizedUserId = useMemo(() => normalizeIdForCompare(user?.id), [user?.id]);
+
+  const scopedFetchParams = useMemo(() => ({
+    clientId: isClient ? normalizedUserId : undefined,
+    technicianId: isTechnicien ? normalizedUserId : undefined,
+  }), [isClient, isTechnicien, normalizedUserId]);
+
+  const canAccess = isTechnicien || isResp || isAdmin || isClient;
+  const canGenerate = isResp || isAdmin; // clients/techniciens ne génèrent pas
   const canDelete = isAdmin;
 
   // Charger les rapports
   const loadReports = async (query: ReportFilterParams = {}) => {
     setLoading(true);
     try {
-      let data: Report[] = [];
-      
-      if (Object.keys(query).length > 0) {
-        data = await reportingService.getRecent(100);
-        
-        // Filtrer localement
-        data = data.filter(report => {
-          if (query.clientId && report.clientId !== query.clientId) return false;
-          if (query.interventionId && report.interventionId !== query.interventionId) return false;
-          if (query.technicianId && report.technicianId !== query.technicianId) return false;
-          if (query.isWarranty !== undefined && report.isWarranty !== query.isWarranty) return false;
-          if (query.dateDebut && report.generatedAt && new Date(report.generatedAt) < new Date(query.dateDebut)) return false;
-          if (query.dateFin && report.generatedAt && new Date(report.generatedAt) > new Date(query.dateFin)) return false;
-          if (query.searchTerm) {
-            const searchLower = query.searchTerm.toLowerCase();
-            return (
-              report.title?.toLowerCase().includes(searchLower) ||
-              report.clientId?.toLowerCase().includes(searchLower) ||
-              report.interventionId?.toLowerCase().includes(searchLower) ||
-              false
-            );
-          }
+      let baseData = await reportingService.getRecent(100, scopedFetchParams);
+      if (!Array.isArray(baseData)) {
+        baseData = Array.isArray((baseData as any)?.items) ? (baseData as any).items : [];
+      }
+
+      // Si la requête filtrée serveur ne renvoie rien pour un rôle restreint, retenter sans scope et filtrer localement
+      if (baseData.length === 0 && (isClient || isTechnicien)) {
+        const fallback = await reportingService.getRecent(100);
+        if (!Array.isArray(fallback)) {
+          baseData = Array.isArray((fallback as any)?.items) ? (fallback as any).items : [];
+        } else {
+          baseData = fallback;
+        }
+        baseData = fallback.filter((r) => {
+          if (isTechnicien && normalizedUserId && String(r.technicianId || '') !== normalizedUserId) return false;
+          if (isClient && normalizedUserId && String(r.clientId || '') !== normalizedUserId) return false;
           return true;
         });
+      }
+
+      const filtered = (Object.keys(query).length > 0 ? baseData.filter(report => {
+        if (query.clientId && report.clientId !== query.clientId) return false;
+        if (query.interventionId && report.interventionId !== query.interventionId) return false;
+        if (query.technicianId && report.technicianId !== query.technicianId) return false;
+        if (query.isWarranty !== undefined && report.isWarranty !== query.isWarranty) return false;
+        if (query.dateDebut && report.generatedAt && new Date(report.generatedAt) < new Date(query.dateDebut)) return false;
+        if (query.dateFin && report.generatedAt && new Date(report.generatedAt) > new Date(query.dateFin)) return false;
+        if (query.searchTerm) {
+          const searchLower = query.searchTerm.toLowerCase();
+          return (
+            report.title?.toLowerCase().includes(searchLower) ||
+            report.clientId?.toLowerCase().includes(searchLower) ||
+            report.interventionId?.toLowerCase().includes(searchLower) ||
+            false
+          );
+        }
+        return true;
+      }) : baseData);
+
+      // Filtrer par rôle côté client en ultime recours
+      const scoped = filtered.filter((r) => {
+        if (isTechnicien && normalizedUserId && String(r.technicianId || '') !== normalizedUserId) return false;
+        if (isClient && normalizedUserId && String(r.clientId || '') !== normalizedUserId) return false;
+        return true;
+      });
+      
+      // Si après filtrage il ne reste rien mais la source contenait des données, afficher quand même la source
+      if (scoped.length === 0 && baseData.length > 0) {
+        setReports(baseData);
       } else {
-        data = await reportingService.getRecent(100);
+        setReports(scoped);
       }
-      
-      // Filtrer par rôle
-      if (isTechnicien && user?.id) {
-        data = data.filter((r) => String(r.technicianId || '') === String(user.id));
-      }
-      
-      setReports(data);
     } catch (error: any) {
       setMessage(error.message || 'Impossible de charger les rapports');
       setMessageType('error');
@@ -192,26 +237,48 @@ const ReportingPage: React.FC = () => {
   // Charger les données de référence
   const loadReferenceData = async () => {
     try {
-      let clientsData = [];
-      let interventionsData = [];
-      let techniciensData = [];
-      let usersData = [];
+      let clientsData: any[] = [];
+      let interventionsData: any[] = [];
+      let techniciensData: any[] = [];
+      let usersData: any[] = [];
+      const errors: string[] = [];
 
       if (isAdmin || isResp) {
-        // Admin et responsablesav : accès complet
-        [clientsData, interventionsData, techniciensData, usersData] = await Promise.all([
+        // Admin et responsablesav : accès complet, mais tolérant aux erreurs
+        const results = await Promise.allSettled([
           clientService.getAll(),
           interventionService.getAll(),
           technicienService.getAll(),
           getUsers()
         ]);
+
+        const [cRes, iRes, tRes, uRes] = results;
+        if (cRes.status === 'fulfilled') clientsData = cRes.value; else errors.push('clients');
+        if (iRes.status === 'fulfilled') interventionsData = iRes.value; else errors.push('interventions');
+        if (tRes.status === 'fulfilled') techniciensData = tRes.value; else errors.push('techniciens');
+        if (uRes.status === 'fulfilled') usersData = uRes.value; else errors.push('utilisateurs');
       } else if (isTechnicien && user?.id) {
-        // Technicien : charger uniquement ses interventions/rapports
-        [clientsData, interventionsData, techniciensData] = await Promise.all([
+        // Technicien : charger uniquement ses interventions/rapports (tolérant)
+        const results = await Promise.allSettled([
           clientService.getAll(),
           interventionService.getAll(),
           technicienService.getAll()
         ]);
+
+        const [cRes, iRes, tRes] = results;
+        if (cRes.status === 'fulfilled') clientsData = cRes.value; else errors.push('clients');
+        if (iRes.status === 'fulfilled') interventionsData = iRes.value; else errors.push('interventions');
+        if (tRes.status === 'fulfilled') techniciensData = tRes.value; else errors.push('techniciens');
+        usersData = [];
+      } else if (isClient && user?.id) {
+        // Client : pas besoin de tout charger; on récupère les clients pour mapper id/email
+        try {
+          clientsData = await clientService.getAll();
+        } catch (err: any) {
+          errors.push('clients');
+        }
+        interventionsData = [];
+        techniciensData = [];
         usersData = [];
       }
 
@@ -247,10 +314,16 @@ const ReportingPage: React.FC = () => {
       setClientDetails(clientMap);
       // Créer la carte interventions/clients
       await mapInterventionsByClient(interventionsData);
+
+      if (errors.length > 0) {
+        setMessage(`Certaines données n'ont pas été chargées (${errors.join(', ')}).`);
+        setMessageType('info');
+      }
     } catch (error: any) {
       console.warn('Erreur lors du chargement des données de référence:', error);
-      setMessage('Erreur lors du chargement des données de référence');
-      setMessageType('error');
+      const is499 = error?.status === 499 || /499/.test(error?.message || '');
+      setMessage(is499 ? 'Chargement interrompu. Réessayez pour récupérer toutes les données.' : 'Erreur lors du chargement des données de référence');
+      setMessageType(is499 ? 'info' : 'error');
     }
   };
 
@@ -415,32 +488,16 @@ const ReportingPage: React.FC = () => {
     }
   };
 
-  // Filtres rapides
-  const loadWarrantyReports = async () => {
-    try {
-      setLoading(true);
-      const data = await reportingService.getRecent(100);
-      const filtered = data.filter(r => r.isWarranty);
-      setReports(filtered);
-      setMessage('Filtre : sous garantie');
-      setMessageType('info');
-    } catch (error: any) {
-      setMessage(error.message || 'Impossible de charger les rapports sous garantie');
-      setMessageType('error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const loadByPeriode = async () => {
     if (!quickDateDebut || !quickDateFin) {
       setMessage('Choisissez une période');
       setMessageType('error');
       return;
     }
+
     try {
       setLoading(true);
-      const data = await reportingService.getRecent(100);
+      const data = await reportingService.getRecent(100, scopedFetchParams);
       const filtered = data.filter(report => {
         if (!report.generatedAt) return false;
         const reportDate = new Date(report.generatedAt);
@@ -465,7 +522,7 @@ const ReportingPage: React.FC = () => {
     }
     try {
       setLoading(true);
-      const data = await reportingService.getRecent(100);
+      const data = await reportingService.getRecent(100, scopedFetchParams);
       const filtered = data.filter(report => {
         const searchLower = quickSearchTerm.toLowerCase();
         return (
@@ -480,6 +537,23 @@ const ReportingPage: React.FC = () => {
       setMessageType('info');
     } catch (error: any) {
       setMessage(error.message || 'Erreur de recherche');
+      setMessageType('error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Filtres rapides
+  const loadWarrantyReports = async () => {
+    try {
+      setLoading(true);
+      const data = await reportingService.getRecent(100, scopedFetchParams);
+      const filtered = data.filter(r => r.isWarranty);
+      setReports(filtered);
+      setMessage('Filtre : sous garantie');
+      setMessageType('info');
+    } catch (error: any) {
+      setMessage(error.message || 'Impossible de charger les rapports sous garantie');
       setMessageType('error');
     } finally {
       setLoading(false);

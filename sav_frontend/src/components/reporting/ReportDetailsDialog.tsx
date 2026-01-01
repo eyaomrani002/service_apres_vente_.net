@@ -9,13 +9,12 @@ import {
   Grid,
   Chip,
   Divider,
-  Button,
-  Stack,
   Paper
 } from '@mui/material';
 import { styled, keyframes } from '@mui/material/styles';
-import { Close, ReceiptLong, CalendarToday, CheckCircle, Paid, Person, Build, Business, Download, PictureAsPdf, Email, Phone } from '@mui/icons-material';
+import { Close, ReceiptLong, CalendarToday, CheckCircle, Paid, Person, Build, Business, PictureAsPdf, Email, Phone } from '@mui/icons-material';
 import { Report } from '../../types/report';
+import PDFGenerator from './PDFGenerator';
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(16px); }
@@ -81,8 +80,7 @@ const ReportDetailsDialog: React.FC<Props> = ({ open, report, onClose }) => {
       open={open}
       onClose={onClose}
       fullWidth
-      disablePortal
-      container={() => document.getElementById('root') as HTMLElement | null || undefined}
+      container={() => document.getElementById('root') as HTMLElement | null}
     >
       <DialogTitle component="div" sx={{ 
         display: 'flex', 
@@ -249,36 +247,13 @@ const ReportDetailsDialog: React.FC<Props> = ({ open, report, onClose }) => {
         )}
 
         {/* Lien PDF */}
-        {report.url && (
+        {report.id && (
           <Box sx={{ mt: 4 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: 'error.main' }}>
               <PictureAsPdf sx={{ mr: 1, verticalAlign: 'middle' }} />
               Document PDF
             </Typography>
-            <Stack direction="row" spacing={2}>
-              <Button
-                variant="contained"
-                startIcon={<PictureAsPdf />}
-                href={report.url}
-                target="_blank"
-                sx={{
-                  flex: 1,
-                  background: 'linear-gradient(45deg, #FF5252 30%, #FF867F 90%)',
-                  boxShadow: '0 3px 5px 2px rgba(255, 82, 82, .3)',
-                }}
-              >
-                Ouvrir le PDF
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={<Download />}
-                href={report.url}
-                download
-                sx={{ flex: 1 }}
-              >
-                Télécharger
-              </Button>
-            </Stack>
+            <PDFGenerator report={report} />
           </Box>
         )}
       </DialogContent>

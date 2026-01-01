@@ -49,6 +49,70 @@ interface Props {
 const ReportsTable: React.FC<Props> = ({ reports, onView, onEdit, onDelete }) => {
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
+  const [loadingPdfId, setLoadingPdfId] = React.useState<string | null>(null);
+
+  const API_BASE = React.useMemo(() => (
+    (import.meta.env.VITE_API_GATEWAY_BASE as string | undefined) ||
+    (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
+    'https://localhost:7076/apigateway'
+  ).replace(/\/$/, ''), []);
+
+  const buildGatewayPdfUrl = (id: string) => `${API_BASE}/reports/${id}/generate-pdf`;
+
+  const isValidHttpUrl = (maybeUrl?: string) => {
+    if (!maybeUrl) return false;
+    try {
+      const u = new URL(maybeUrl);
+      return (u.protocol === 'http:' || u.protocol === 'https:') && !u.hostname.endsWith('.local');
+    } catch {
+      return false;
+    }
+  };
+
+  const openPdf = async (report: Report) => {
+    if (!report.id) return;
+    setLoadingPdfId(report.id);
+    try {
+      if (isValidHttpUrl(report.url)) {
+        window.open(report.url as string, '_blank');
+        return;
+      }
+
+      const response = await fetch(buildGatewayPdfUrl(report.id), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('accessToken') || localStorage.getItem('token') || ''}`,
+        },
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        // Si 404, tenter l'URL existante si elle est valide
+        if (response.status === 404) {
+          if (isValidHttpUrl(report.url)) {
+            window.open(report.url as string, '_blank');
+            return;
+          }
+          alert('PDF non disponible pour ce rapport (404).');
+          return;
+        }
+        throw new Error(text || `Erreur PDF (${response.status})`);
+      }
+
+      const blob = await response.blob();
+      if (!blob || blob.size === 0) throw new Error('PDF vide ou indisponible');
+
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => window.URL.revokeObjectURL(url), 5000);
+    } catch (err: any) {
+      console.error('Erreur PDF tableau:', err);
+      alert(err?.message || 'Impossible d\'ouvrir le PDF');
+    } finally {
+      setLoadingPdfId(null);
+    }
+  };
 
   const handleChangePage = (event: unknown, newPage: number) => {
     setPage(newPage);
@@ -169,14 +233,15 @@ const ReportsTable: React.FC<Props> = ({ reports, onView, onEdit, onDelete }) =>
                     </TableCell>
                     <TableCell align="right">
                       <Tooltip title="Voir le PDF">
-                        <IconButton 
-                          size="small" 
-                          href={report.url || '#'} 
-                          target="_blank"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <PictureAsPdf fontSize="small" color="error" />
-                        </IconButton>
+                        <span>
+                          <IconButton 
+                            size="small"
+                            onClick={(e) => { e.stopPropagation(); openPdf(report); }}
+                            disabled={loadingPdfId === report.id}
+                          >
+                            <PictureAsPdf fontSize="small" color="error" />
+                          </IconButton>
+                        </span>
                       </Tooltip>
                       <Tooltip title="Voir le détail">
                         <IconButton size="small" onClick={() => onView(report)}>

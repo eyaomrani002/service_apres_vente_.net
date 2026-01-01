@@ -1,7 +1,12 @@
 import axios from 'axios';
 import { AppUser } from '../types/user';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/apigateway';
+// Aligner l'origine sur la gateway HTTPS pour éviter les 401 quand Vite proxifie en http://localhost:5173
+const API_BASE = (
+  (import.meta.env.VITE_API_GATEWAY_BASE as string | undefined)
+  || (import.meta.env.VITE_API_BASE_URL as string | undefined)
+  || 'https://localhost:7076/apigateway'
+).replace(/\/$/, '');
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
@@ -20,14 +25,27 @@ const normalizeUsersResponse = (payload: unknown): AppUser[] => {
 };
 
 export async function getUsers(): Promise<AppUser[]> {
-  const response = await axios.get(`${API_BASE}/auth/users`, {
-    headers: {
-      ...getAuthHeaders(),
-    },
-    withCredentials: true,
-  });
+  try {
+    const response = await axios.get(`${API_BASE}/auth/users`, {
+      headers: {
+        ...getAuthHeaders(),
+      },
+      withCredentials: true,
+      // Eviter les requêtes parallèles de pré-chargement qui peuvent être annulées côté gateway
+      signal: undefined,
+    });
 
-  return normalizeUsersResponse(response.data);
+    return normalizeUsersResponse(response.data);
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      const message = error.response?.data?.message || error.message || 'Erreur lors du chargement des utilisateurs';
+      const wrapped = new Error(message);
+      (wrapped as any).status = status;
+      throw wrapped;
+    }
+    throw error;
+  }
 }
 
 export async function addRoleToUser(userId: string, role: string): Promise<string> {

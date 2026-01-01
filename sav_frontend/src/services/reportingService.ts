@@ -16,6 +16,11 @@ function getAuthHeaders(): Record<string, string> {
 }
 
 async function handleResponse(res: Response) {
+  if (res.status === 499) {
+    const text = await res.text();
+    throw new Error(text || 'La génération ou le téléchargement du document a expiré (499). Veuillez réessayer.');
+  }
+
   if (!res.ok) {
     const text = await res.text();
     let errorMessage = `HTTP ${res.status} ${res.statusText}`;
@@ -112,8 +117,21 @@ const fetchJson = async (path: string, init?: RequestInit) => {
 
 export const reportingService = {
   // Récupérer les rapports
-  getRecent: async (take = 50): Promise<Report[]> => 
-    fetchJson(`?take=${take}`),
+  getRecent: async (take = 50, scope?: { clientId?: string; technicianId?: string }): Promise<Report[]> => {
+    const query = new URLSearchParams({ take: String(take) });
+
+    if (scope?.clientId) {
+      query.append('clientId', normalizeId(scope.clientId) || String(scope.clientId));
+    }
+    if (scope?.technicianId) {
+      query.append('technicianId', normalizeId(scope.technicianId) || String(scope.technicianId));
+    }
+
+    const data = await fetchJson(`?${query.toString()}`);
+    if (Array.isArray(data)) return data as Report[];
+    if (data && Array.isArray((data as any).items)) return (data as any).items as Report[];
+    return [];
+  },
   
   getById: async (id: string): Promise<Report> => 
     fetchJson(`/${encodeURIComponent(id)}`),

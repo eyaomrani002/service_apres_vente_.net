@@ -104,14 +104,7 @@ const InterventionsPage: React.FC = () => {
   const load = async () => {
     setLoading(true);
     try {
-      if (isTechnicien && user?.id) {
-        // Filtrer interventions du technicien connecté
-        const data = await interventionService.byTechnicien(Number(user.id));
-        setItems(Array.isArray(data) ? data : []);
-        setStats(null);
-        return;
-      }
-        if (isTechnicien) {
+      if (isTechnicien) {
           // Essayer de déterminer l'ID numérique du technicien depuis l'utilisateur courant
           let techId: number = NaN;
           try {

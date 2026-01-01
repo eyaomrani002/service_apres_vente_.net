@@ -1,6 +1,10 @@
 import { NotificationItem } from '../types/notification';
 
-const BASE = 'https://localhost:7076/apigateway/notifications';
+const BASE = (
+  import.meta.env.VITE_NOTIFICATION_API_BASE ||
+  import.meta.env.VITE_API_GATEWAY_BASE ||
+  'https://localhost:7076/apigateway'
+).replace(/\/$/, '') + '/notifications';
 
 function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
@@ -35,6 +39,10 @@ export const notificationService = {
   },
   markRead: async (id: string) => {
     const res = await fetch(`${BASE}/${encodeURIComponent(id)}/read`, { method: 'POST', headers: getAuthHeaders() });
+    if (res.status === 404) {
+      // si la notif n'existe plus côté serveur, on ne bloque pas l'UX
+      return null;
+    }
     return handleResponse(res);
   },
 };

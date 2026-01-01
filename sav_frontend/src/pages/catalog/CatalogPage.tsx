@@ -428,7 +428,7 @@ const CatalogPage: React.FC = () => {
 
             {/* Prix */}
             <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-              Prix (€)
+              Prix (DNT)
             </Typography>
             <Slider
               value={priceRange}

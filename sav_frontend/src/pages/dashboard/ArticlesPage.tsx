@@ -275,7 +275,7 @@ const ArticlesPage: React.FC = () => {
                   Valeur Totale
                 </Typography>
                 <Typography variant="h4" sx={{ fontWeight: 800, color: '#FF9800' }}>
-                  {localStats.totalValeur ? formatCurrency(localStats.totalValeur) : '0 €'}
+                  {localStats.totalValeur ? formatCurrency(localStats.totalValeur) : '0 DNT'}
                 </Typography>
               </Box>
             </CardContent>

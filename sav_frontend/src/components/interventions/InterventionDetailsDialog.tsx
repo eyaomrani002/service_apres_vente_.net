@@ -187,8 +187,8 @@ const InterventionDetailsDialog: React.FC<Props> = ({ open, intervention, onClos
   };
 
   const formatCost = (cost: number | null | undefined) => {
-    if (cost === null || cost === undefined) return '0.00 €';
-    return `${cost.toFixed(2)} €`;
+    if (cost === null || cost === undefined) return '0.00 DNT';
+    return `${cost.toFixed(2)} DNT`;
   };
 
   return (

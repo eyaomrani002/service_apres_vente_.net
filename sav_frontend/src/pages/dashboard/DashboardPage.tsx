@@ -1,5 +1,6 @@
 // DashboardPage.tsx - Version corrigée
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Paper,
   Box,
@@ -34,78 +35,12 @@ import {
   Warning,
   Schedule
 } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
-import StatsCard from '../../components/common/ui/StatsCard';
 import AuthContext from '../../contexts/AuthContext';
-import PageTitle from '../../components/common/PageTitle';
 import { articleService } from '../../services/articleService';
 import { clientService } from '../../services/clientService';
-import { interventionService } from '../../services/interventionService';
 import { reclamationService } from '../../services/reclamationService';
-
-// Animations
-const fadeIn = keyframes`
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-`;
-
-const pulse = keyframes`
-  0% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-  100% { transform: scale(1); }
-`;
-
-// Styled Components
-const ModernPaper = styled(Paper)(({ theme }) => ({
-  borderRadius: '24px',
-  padding: '28px',
-  background: 'rgba(255, 255, 255, 0.98)',
-  border: '1px solid rgba(33, 150, 243, 0.15)',
-  boxShadow: '0 16px 40px rgba(33, 150, 243, 0.1)',
-  animation: `${fadeIn} 0.5s ease`,
-  transition: 'all 0.3s ease',
-  '&:hover': {
-    boxShadow: '0 20px 50px rgba(33, 150, 243, 0.15)',
-  },
-}));
-
-const ModernCard = styled(Card)(({ theme }) => ({
-  borderRadius: '20px',
-  border: '1px solid rgba(0, 0, 0, 0.08)',
-  background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.95))',
-  boxShadow: '0 12px 36px rgba(0, 0, 0, 0.08)',
-  transition: 'all 0.3s ease',
-  '&:hover': {
-    transform: 'translateY(-8px)',
-    boxShadow: '0 20px 50px rgba(33, 150, 243, 0.2)',
-    borderColor: 'rgba(33, 150, 243, 0.3)',
-  },
-}));
-
-const StatsAvatar = styled(Avatar)(({ theme }) => ({
-  width: 56,
-  height: 56,
-  background: 'linear-gradient(135deg, #2196F3 0%, #42A5F5 100%)',
-  boxShadow: '0 12px 24px rgba(33, 150, 243, 0.4)',
-  animation: `${pulse} 2s infinite`,
-}));
-
-const GradientButton = styled(Button)(({ theme }) => ({
-  background: 'linear-gradient(135deg, #2196F3 0%, #00BCD4 100%)',
-  color: '#fff',
-  fontWeight: 700,
-  padding: '14px 32px',
-  borderRadius: '16px',
-  textTransform: 'none',
-  boxShadow: '0 12px 28px rgba(33, 150, 243, 0.3)',
-  transition: 'all 0.3s ease',
-  fontSize: '15px',
-  '&:hover': {
-    transform: 'translateY(-4px)',
-    boxShadow: '0 20px 40px rgba(33, 150, 243, 0.4)',
-    background: 'linear-gradient(135deg, #1976D2 0%, #0097A7 100%)',
-  },
-}));
+import { interventionService } from '../../services/interventionService';
+import PageTitle from '../../components/common/PageTitle';
 
 const QuickActionButton = styled(Button)(({ theme }) => ({
   borderRadius: '16px',
@@ -150,18 +85,42 @@ const ProgressBar = styled(LinearProgress)(({ theme }) => ({
   },
 }));
 
-const StatChip = styled(Chip)(({ theme, color }: any) => ({
+const StatChip = styled(Chip, {
+  shouldForwardProp: (prop) => prop !== 'chipcolor',
+})(({ chipcolor }: any) => ({
   fontWeight: 700,
   height: '32px',
   borderRadius: '16px',
-  background: color?.background || 'rgba(33, 150, 243, 0.1)',
-  color: color?.text || '#2196F3',
-  border: `1px solid ${color?.border || 'rgba(33, 150, 243, 0.2)'}`,
+  background: chipcolor?.background || 'rgba(33, 150, 243, 0.1)',
+  color: chipcolor?.text || '#2196F3',
+  border: `1px solid ${chipcolor?.border || 'rgba(33, 150, 243, 0.2)'}`,
   '& .MuiChip-label': {
     paddingLeft: '12px',
     paddingRight: '12px',
     fontSize: '13px',
   },
+}));
+
+const ModernCard = styled(Card)(({ theme }) => ({
+  borderRadius: '24px',
+  boxShadow: '0 20px 45px rgba(15, 23, 42, 0.08)',
+  border: '1px solid rgba(15, 23, 42, 0.08)',
+  background: 'linear-gradient(145deg, rgba(255,255,255,0.95), rgba(248,250,252,0.95))',
+  backdropFilter: 'blur(6px)',
+  transition: 'all 0.3s ease',
+  '&:hover': {
+    transform: 'translateY(-4px)',
+    boxShadow: '0 30px 60px rgba(15, 23, 42, 0.12)'
+  }
+}));
+
+const ModernPaper = styled(Paper)(({ theme }) => ({
+  borderRadius: '20px',
+  padding: '28px',
+  border: '1px solid rgba(15, 23, 42, 0.08)',
+  background: 'linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.96))',
+  boxShadow: '0 18px 40px rgba(15, 23, 42, 0.08)',
+  backdropFilter: 'blur(6px)',
 }));
 
 const DashboardPage: React.FC = () => {
@@ -175,6 +134,102 @@ const DashboardPage: React.FC = () => {
   });
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [performance, setPerformance] = useState(94);
+  const { user, hasAnyRole } = useContext(AuthContext);
+
+  type RoleKey = 'client' | 'technicien' | 'responsablesav' | 'admin';
+
+  const roleLabels: Record<RoleKey, string> = {
+    client: 'Client',
+    technicien: 'Technicien',
+    responsablesav: 'Responsable SAV',
+    admin: 'Admin',
+  };
+
+  const activeRole = useMemo<RoleKey>(() => {
+    const firstRole = user?.roles?.[0]?.toLowerCase();
+    if (firstRole === 'technicien' || firstRole === 'responsablesav' || firstRole === 'admin') {
+      return firstRole as RoleKey;
+    }
+    return 'client';
+  }, [user]);
+
+  type QuickAction = { label: string; path: string; icon: React.ReactNode; color: string };
+  type RoleConfig = { headline: string; accent: string; quickActions: QuickAction[]; highlights: string[] };
+
+  const roleConfigs: Record<RoleKey, RoleConfig> = useMemo(() => ({
+    client: {
+      headline: 'Vue client : suivi de vos réclamations, rendez-vous et factures',
+      accent: '#2196F3',
+      quickActions: [
+        { label: 'Nouvelle réclamation', path: '/reclamations', icon: <Assignment sx={{ fontSize: 32, color: '#FF9800' }} />, color: '#FF9800' },
+        { label: 'Planifier un RDV', path: '/calendar', icon: <CalendarToday sx={{ fontSize: 32, color: '#2196F3' }} />, color: '#2196F3' },
+        { label: 'Suivre mes interventions', path: '/interventions', icon: <Build sx={{ fontSize: 32, color: '#4CAF50' }} />, color: '#4CAF50' },
+        { label: 'Consulter mes factures', path: '/factures', icon: <Receipt sx={{ fontSize: 32, color: '#00BCD4' }} />, color: '#00BCD4' },
+      ],
+      highlights: [
+        'Créez et suivez vos réclamations avec photos et statuts',
+        'Planifiez vos rendez-vous et recevez des rappels',
+        'Suivez la progression des interventions et la garantie',
+        'Payez vos factures et exportez vos données client',
+      ],
+    },
+    technicien: {
+      headline: 'Vue technicien : interventions assignées, pièces et planification',
+      accent: '#4CAF50',
+      quickActions: [
+        { label: 'Interventions assignées', path: '/interventions', icon: <Build sx={{ fontSize: 32, color: '#4CAF50' }} />, color: '#4CAF50' },
+        { label: 'Agenda du jour', path: '/calendar', icon: <Schedule sx={{ fontSize: 32, color: '#2196F3' }} />, color: '#2196F3' },
+        { label: 'Réclamations en cours', path: '/reclamations', icon: <Assignment sx={{ fontSize: 32, color: '#FF9800' }} />, color: '#FF9800' },
+        { label: 'Catalogue articles', path: '/articles', icon: <Inventory sx={{ fontSize: 32, color: '#9C27B0' }} />, color: '#9C27B0' },
+      ],
+      highlights: [
+        'Consultez vos interventions et mettez à jour les statuts',
+        'Vérifiez les garanties articles avant réparation',
+        'Ajoutez les pièces nécessaires et documentez la solution',
+        'Rédigez vos rapports techniques et suivez vos performances',
+      ],
+    },
+    responsablesav: {
+      headline: 'Vue responsable SAV : pilotage des réclamations, techniciens et planning',
+      accent: '#9C27B0',
+      quickActions: [
+        { label: 'Gérer les réclamations', path: '/reclamations', icon: <Assignment sx={{ fontSize: 32, color: '#FF9800' }} />, color: '#FF9800' },
+        { label: 'Assigner un technicien', path: '/interventions', icon: <People sx={{ fontSize: 32, color: '#2196F3' }} />, color: '#2196F3' },
+        { label: 'Planifier les interventions', path: '/calendar', icon: <Schedule sx={{ fontSize: 32, color: '#00BCD4' }} />, color: '#00BCD4' },
+        { label: 'Rapports et analytics', path: '/reports', icon: <PieChart sx={{ fontSize: 32, color: '#9C27B0' }} />, color: '#9C27B0' },
+      ],
+      highlights: [
+        'Vue complète des réclamations et des affectations',
+        'Validation des estimations et des factures SAV',
+        'Gestion des techniciens, disponibilités et conflits agenda',
+        'Tableaux de bord SAV et performance d’équipe',
+      ],
+    },
+    admin: {
+      headline: 'Vue administrateur : supervision globale et gouvernance des services',
+      accent: '#0D47A1',
+      quickActions: [
+        { label: 'Gérer les utilisateurs', path: '/users', icon: <People sx={{ fontSize: 32, color: '#0D47A1' }} />, color: '#0D47A1' },
+        { label: 'Catalogue articles', path: '/articles', icon: <Inventory sx={{ fontSize: 32, color: '#9C27B0' }} />, color: '#9C27B0' },
+        { label: 'Clients et réclamations', path: '/clients', icon: <Assignment sx={{ fontSize: 32, color: '#FF9800' }} />, color: '#FF9800' },
+        { label: 'Reporting global', path: '/reports', icon: <PieChart sx={{ fontSize: 32, color: '#00BCD4' }} />, color: '#00BCD4' },
+      ],
+      highlights: [
+        'Attribution des rôles, activation/désactivation des comptes',
+        'Supervision de tous les microservices et des logs',
+        'Pilotage des stocks, garanties et facturation',
+        'Analytics globaux et export complet des données',
+      ],
+    },
+  }), []);
+
+  const roleStatKeys: Record<RoleKey, string[]> = {
+    client: ['Réclamations', 'Interventions', 'Articles'],
+    technicien: ['Interventions', 'Réclamations', 'Articles'],
+    responsablesav: ['Réclamations', 'Interventions', 'Clients', 'Articles'],
+    admin: ['Articles', 'Clients', 'Réclamations', 'Interventions'],
+  };
+
 
   useEffect(() => {
     loadDashboardData();
@@ -183,17 +238,21 @@ const DashboardPage: React.FC = () => {
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      // Charger les données en parallèle
+      const canFetchArticles = hasAnyRole(['admin', 'responsablesav', 'technicien', 'client']);
+      const canFetchClients = hasAnyRole(['admin', 'responsablesav']);
+      const canFetchReclamations = hasAnyRole(['admin', 'responsablesav', 'technicien', 'client']);
+      const canFetchInterventions = hasAnyRole(['admin', 'responsablesav', 'technicien', 'client']);
+
       const [
         articles,
         clients,
         reclamations,
         interventions
       ] = await Promise.all([
-        articleService.getAll(),
-        clientService.getAll(),
-        reclamationService.getAll(),
-        interventionService.getAll()
+        canFetchArticles ? articleService.getAll().catch(() => []) : [],
+        canFetchClients ? clientService.getAll().catch(() => []) : [],
+        canFetchReclamations ? reclamationService.getAll().catch(() => []) : [],
+        canFetchInterventions ? interventionService.getAll().catch(() => []) : [],
       ]);
 
       // Calculer les statistiques
@@ -276,7 +335,7 @@ const DashboardPage: React.FC = () => {
     }
   };
 
-  const statsData = [
+  const baseStatsData = [
     {
       title: 'Articles',
       value: stats.articles.total.toString(),
@@ -315,32 +374,9 @@ const DashboardPage: React.FC = () => {
     },
   ];
 
-  const quickActions = [
-    { 
-      label: 'Nouvelle réclamation', 
-      path: '/reclamations/new', 
-      icon: <Assignment sx={{ fontSize: 32, color: '#FF9800' }} />,
-      color: '#FF9800'
-    },
-    { 
-      label: 'Ajouter un client', 
-      path: '/clients/new', 
-      icon: <People sx={{ fontSize: 32, color: '#2196F3' }} />,
-      color: '#2196F3'
-    },
-    { 
-      label: 'Créer une intervention', 
-      path: '/interventions/new', 
-      icon: <Build sx={{ fontSize: 32, color: '#4CAF50' }} />,
-      color: '#4CAF50'
-    },
-    { 
-      label: 'Ajouter un article', 
-      path: '/articles/new', 
-      icon: <Inventory sx={{ fontSize: 32, color: '#9C27B0' }} />,
-      color: '#9C27B0'
-    },
-  ];
+  const statsData = baseStatsData.filter((stat) => roleStatKeys[activeRole].includes(stat.title));
+
+  const quickActions = roleConfigs[activeRole].quickActions;
 
   const statusStats = [
     { label: 'En attente', value: 12, color: { background: 'rgba(255, 152, 0, 0.1)', text: '#FF9800', border: 'rgba(255, 152, 0, 0.2)' } },
@@ -357,6 +393,18 @@ const DashboardPage: React.FC = () => {
       maximumFractionDigits: 0
     }).format(value);
   };
+
+  const displayName = useMemo(() => {
+    if (!user) return undefined;
+    return (
+      user.name ||
+      [user.firstName, user.lastName].filter(Boolean).join(' ') ||
+      (user.given_name && user.family_name ? `${user.given_name} ${user.family_name}` : '') ||
+      user.email ||
+      user.uid ||
+      user.sub
+    );
+  }, [user]);
 
   if (loading) {
     return (
@@ -378,55 +426,50 @@ const DashboardPage: React.FC = () => {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
-      {/* En-tête avec informations utilisateur */}
-      <AuthContext.Consumer>
-        {({ user }) => {
-          if (!user) return null;
-          const displayName =
-            user.name ||
-            [user.firstName, user.lastName].filter(Boolean).join(' ') ||
-            (user.given_name && user.family_name ? `${user.given_name} ${user.family_name}` : '') ||
-            user.email ||
-            user.uid ||
-            user.sub ||
-            undefined;
-          
-          return displayName ? (
-            <Box sx={{ 
-              mb: 3, 
-              p: 2, 
-              borderRadius: '16px', 
-              background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.05), rgba(0, 188, 212, 0.05))',
-              border: '1px solid rgba(33, 150, 243, 0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: 2
-            }}>
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 700, color: '#2196F3' }}>
-                  Bonjour, {displayName} 👋
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Bienvenue sur votre tableau de bord
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Typography variant="body2" color="text.secondary">
-                  {new Date().toLocaleDateString('fr-FR', { 
-                    weekday: 'long', 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric' 
-                  })}
-                </Typography>
-                <CalendarToday sx={{ color: '#00BCD4' }} />
-              </Box>
-            </Box>
-          ) : null;
-        }}
-      </AuthContext.Consumer>
+      {displayName && (
+        <Box sx={{ 
+          mb: 3, 
+          p: 2, 
+          borderRadius: '16px', 
+          background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.05), rgba(0, 188, 212, 0.05))',
+          border: '1px solid rgba(33, 150, 243, 0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 2
+        }}>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: roleConfigs[activeRole].accent }}>
+              Bonjour, {displayName} 👋
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Bienvenue sur votre tableau de bord {roleLabels[activeRole]}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Typography variant="body2" color="text.secondary">
+              {new Date().toLocaleDateString('fr-FR', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              })}
+            </Typography>
+            <CalendarToday sx={{ color: '#00BCD4' }} />
+            <Chip 
+              label={`Rôle : ${roleLabels[activeRole]}`}
+              size="small"
+              sx={{
+                fontWeight: 700,
+                backgroundColor: `${roleConfigs[activeRole].accent}12`,
+                color: roleConfigs[activeRole].accent,
+                border: `1px solid ${roleConfigs[activeRole].accent}40`
+              }}
+            />
+          </Box>
+        </Box>
+      )}
 
       {/* Titre principal */}
       <PageTitle
@@ -790,7 +833,7 @@ const DashboardPage: React.FC = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
                 <TrendingUp sx={{ color: '#4CAF50', mr: 1 }} />
                 <Typography variant="body2" sx={{ fontWeight: 600, color: '#4CAF50' }}>
-                  +1 250 € vs mois dernier
+                  +1 250 DNT vs mois dernier
                 </Typography>
               </Box>
             </Box>
@@ -863,7 +906,7 @@ const DashboardPage: React.FC = () => {
           </Box>
           <StatChip 
             label="3 nouvelles" 
-            chipColor={{ background: 'rgba(255, 152, 0, 0.1)', text: '#FF9800', border: 'rgba(255, 152, 0, 0.2)' }}
+            chipcolor={{ background: 'rgba(255, 152, 0, 0.1)', text: '#FF9800', border: 'rgba(255, 152, 0, 0.2)' }}
           />
         </Box>
         <Grid container spacing={2}>

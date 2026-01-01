@@ -5,6 +5,8 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
 using System.IO;
+using iTextSharp.text;
+using iTextSharp.text.pdf;
 
 namespace ReportingAPI.Controllers
 {
@@ -346,14 +348,61 @@ namespace ReportingAPI.Controllers
 
         private byte[] GeneratePdfContent(Report report, dynamic clientInfo, dynamic interventionInfo, dynamic technicianInfo)
         {
-            // Utilisation de QuestPDF ou iTextSharp recommandée en production
+            // Génère un vrai PDF simple avec iTextSharp pour éviter les erreurs de lecteur
             try
             {
                 using (var ms = new MemoryStream())
                 {
-                    // PDF factice pour l'exemple
-                    var dummyPdf = $"PDF Rapport\nID: {report.Id}\nClient: {clientInfo?.Nom}\nIntervention: {interventionInfo?.Statut}";
-                    return System.Text.Encoding.UTF8.GetBytes(dummyPdf);
+                    var document = new Document(PageSize.A4, 40f, 40f, 40f, 40f);
+                    PdfWriter.GetInstance(document, ms);
+
+                    document.Open();
+
+                    var titleFont = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 16);
+                    var labelFont = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 11);
+                    var valueFont = FontFactory.GetFont(FontFactory.HELVETICA, 11);
+
+                    document.Add(new Paragraph($"Rapport d'intervention", titleFont));
+                    document.Add(new Paragraph($"ID: {report.Id}", valueFont));
+                    document.Add(new Paragraph(" \n"));
+
+                    var table = new PdfPTable(2) { WidthPercentage = 100 };
+                    table.SetWidths(new float[] { 30f, 70f });
+
+                    void AddRow(string label, string? value)
+                    {
+                        var labelCell = new PdfPCell(new Phrase(label, labelFont))
+                        {
+                            Border = Rectangle.NO_BORDER,
+                            Padding = 6f
+                        };
+                        var valueCell = new PdfPCell(new Phrase(value ?? "N/A", valueFont))
+                        {
+                            Border = Rectangle.NO_BORDER,
+                            Padding = 6f
+                        };
+                        table.AddCell(labelCell);
+                        table.AddCell(valueCell);
+                    }
+
+                    AddRow("Client", clientInfo?.Nom ?? report.ClientId.ToString());
+                    AddRow("Email client", clientInfo?.Email ?? "");
+                    AddRow("Technicien", technicianInfo?.Nom ?? "Non assigné");
+                    AddRow("Intervention", interventionInfo?.Statut ?? report.InterventionId.ToString());
+                    AddRow("Sous garantie", report.IsWarranty ? "Oui" : "Non");
+                    AddRow("Montant", (report?.Total ?? 0).ToString("0.00") + " EUR");
+                    AddRow("Généré le", (report?.GeneratedAt ?? DateTime.UtcNow).ToString("u"));
+
+                    document.Add(table);
+
+                    if (!string.IsNullOrWhiteSpace(report.Title))
+                    {
+                        document.Add(new Paragraph(" \n"));
+                        document.Add(new Paragraph(report.Title, labelFont));
+                    }
+
+                    document.Close();
+                    return ms.ToArray();
                 }
             }
             catch (Exception ex)

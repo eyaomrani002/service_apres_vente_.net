@@ -460,7 +460,7 @@ const FacturesPage: React.FC = () => {
           <StatsCard title="Payées" value={stats.payees} color="success" subtitle="Factures réglées" />
         </Grid>
         <Grid item xs={12} sm={4}>
-          <StatsCard title="Montant moyen" value={`${stats.avg.toFixed(0)} €`} color="warning" subtitle="TTC" />
+          <StatsCard title="Montant moyen" value={`${stats.avg.toFixed(0)} DNT`} color="warning" subtitle="TTC" />
         </Grid>
       </Grid>
 

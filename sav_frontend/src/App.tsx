@@ -64,7 +64,7 @@ function AppContent() {
 
         {/* Protected routes: MainLayout is only mounted when authenticated */}
         <Route element={isAuthenticated ? <MainLayout /> : <Navigate to="/login" replace />}>
-          <Route path="/dashboard" element={<ProtectedRoute element={<DashboardPage />} roles={['admin']} />} />
+          <Route path="/dashboard" element={<ProtectedRoute element={<DashboardPage />} roles={['admin','responsablesav','technicien','client']} />} />
           <Route path="/catalog" element={<ProtectedRoute element={<CatalogPage />} />} />
           <Route path="/cart" element={<ProtectedRoute element={<CartPage />} />} />
           <Route path="/articles" element={<ProtectedRoute element={<ArticlesPage />} roles={['admin', 'responsablesav']} />} />

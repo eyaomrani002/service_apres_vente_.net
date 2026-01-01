@@ -659,7 +659,7 @@ const ReportingPage: React.FC = () => {
         <Grid item size={{ xs: 12, sm: 4 }}>
           <StatsCard 
             title="Montant total" 
-            value={`${stats.totalAmount.toFixed(0)} €`} 
+            value={`${stats.totalAmount.toFixed(0)} DNT`} 
             color="success" 
             subtitle="Total des rapports"
           />

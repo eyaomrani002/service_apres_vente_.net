@@ -161,7 +161,7 @@ namespace InterventionAPI.Models.Repositories
                         PropertyNameCaseInsensitive = true
                     });
 
-                    // Estimation : 20% du prix d'achat pour les pièces, minimum 10€
+                    // Estimation : 20% du prix d'achat pour les pièces, minimum 10DNT
                     return Math.Max(article?.PrixAchat * 0.2m ?? 30.00m, 10.00m);
                 }
 

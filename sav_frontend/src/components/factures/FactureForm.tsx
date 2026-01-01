@@ -75,9 +75,16 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
 
   // Use AuthContext for current user and roles
   const { user: authUser } = useContext(AuthContext) as any;
-  const rolesArr = Array.isArray(authUser?.roles) ? authUser.roles.map((r: string) => r.toLowerCase()) : typeof authUser?.role === 'string' ? [String(authUser.role).toLowerCase()] : [];
+  const rolesArr = Array.isArray(authUser?.roles)
+    ? authUser.roles.map((r: string) => r.toLowerCase())
+    : typeof authUser?.role === 'string'
+      ? [String(authUser.role).toLowerCase()]
+      : [];
   const isClient = rolesArr.includes('client');
   const isAdmin = rolesArr.includes('admin');
+  const isResponsable = rolesArr.includes('responsablesav');
+  const canChooseAnyClient = isAdmin || isResponsable;
+  const isClientLocked = isClient && !canChooseAnyClient;
 
   // Récupérer tous les utilisateurs avec rôle Client
   const fetchAuthClients = async (): Promise<Client[]> => {
@@ -123,7 +130,7 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
     setLoading(prev => ({ ...prev, clients: true }));
     setError('');
     try {
-      if (isClient && authUser) {
+      if (isClientLocked && authUser) {
         // Pour le rôle client, charger uniquement ses propres infos
         const clientApi = await clientService.getByEmail(authUser.email).catch(() => null);
         if (clientApi) {
@@ -143,22 +150,18 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
       const validApiClients = Array.isArray(apiClients) ? apiClients : [];
 
       if (isAdmin) {
-        // For admins: fetch auth users that have the 'client' role and show them
         const authClients = await fetchAuthClients().catch(() => []);
-        const authEmails = new Set((authClients || []).map((a: any) => (a.email || '').toLowerCase()));
         const apiByEmail = new Map((validApiClients || []).map((c: any) => [String(c.email || '').toLowerCase(), c]));
 
-        // Prefer API client records when an auth user has a matching API client (to keep numeric ids)
-        const merged: Client[] = [];
-        for (const ac of (authClients || [])) {
-          const email = (ac.email || '').toLowerCase();
-          if (apiByEmail.has(email)) {
-            merged.push(apiByEmail.get(email)!);
-          } else {
-            merged.push(ac);
-          }
+        const merged: Client[] = [...validApiClients];
+
+        for (const authClient of (authClients || [])) {
+          const email = (authClient.email || '').toLowerCase();
+          if (email && apiByEmail.has(email)) continue;
+          merged.push(authClient);
         }
 
+        merged.sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr', { sensitivity: 'base' }));
         setClients(merged);
       } else {
         // Non-admins see API clients only
@@ -426,7 +429,6 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
 
   // Soumettre le formulaire
   const handleSubmit = async () => {
-    // Validation minimale
     if (!form.interventionId) {
       setError('Veuillez sélectionner une intervention');
       return;
@@ -437,33 +439,44 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
       return;
     }
 
-    // Si l'adresse manque, tenter une dernière récupération automatique avant de bloquer
-    if (!form.clientAdresse || String(form.clientAdresse).trim() === '') {
+    if (!isClientLocked && !selectedClientId) {
+      setError('Veuillez sélectionner un client');
+      return;
+    }
+
+    let resolvedAdresse = (form.clientAdresse || '').trim();
+
+    if (!resolvedAdresse) {
       try {
-        // Priorité : client résolu via clientService.getAll
-        const clients = await clientService.getAll();
-        const authRaw = localStorage.getItem('user');
-        let authUser: any = null;
-        if (authRaw) authUser = JSON.parse(authRaw);
-        const resolved = (clients || []).find((c: any) => String(c.userId) === String(authUser?.id) || c.email === authUser?.email);
-        if (resolved && resolved.adresse) {
-          setForm(prev => ({ ...prev, clientAdresse: resolved.adresse }));
+        if (!isClient && selectedClientId) {
+          const numeric = Number(selectedClientId);
+          if (Number.isFinite(numeric) && numeric > 0) {
+            const clientFull = await clientService.getById(numeric).catch(() => null);
+            if (clientFull?.adresse) {
+              resolvedAdresse = clientFull.adresse;
+              setForm(prev => ({ ...prev, clientAdresse: clientFull.adresse }));
+            }
+          }
         }
 
-        // Si toujours vide, tenter par email
-        if ((!form.clientAdresse || String(form.clientAdresse).trim() === '') && form.clientEmail) {
+        if (!resolvedAdresse && form.clientEmail) {
           const byEmail = await clientService.getByEmail(String(form.clientEmail)).catch(() => null);
-          if (byEmail && byEmail.adresse) setForm(prev => ({ ...prev, clientAdresse: byEmail.adresse }));
+          if (byEmail?.adresse) {
+            resolvedAdresse = byEmail.adresse;
+            setForm(prev => ({ ...prev, clientAdresse: byEmail.adresse }));
+          }
         }
 
-        // Si toujours vide, tenter via l'intervention -> réclamation -> client
-        if ((!form.clientAdresse || String(form.clientAdresse).trim() === '') && form.interventionId) {
+        if (!resolvedAdresse && form.interventionId) {
           const intr = interventions.find(i => i.id === Number(form.interventionId));
           if (intr) {
             const recl = await reclamationService.getById(intr.reclamationId).catch(() => null);
             if (recl?.clientId) {
               const clientFull = await clientService.getById(recl.clientId).catch(() => null);
-              if (clientFull && clientFull.adresse) setForm(prev => ({ ...prev, clientAdresse: clientFull.adresse }));
+              if (clientFull?.adresse) {
+                resolvedAdresse = clientFull.adresse;
+                setForm(prev => ({ ...prev, clientAdresse: clientFull.adresse }));
+              }
             }
           }
         }
@@ -472,8 +485,7 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
       }
     }
 
-    // Après tentatives, si adresse manquante -> bloquer et demander saisie
-    if (!form.clientAdresse || String(form.clientAdresse).trim() === '') {
+    if (!resolvedAdresse || resolvedAdresse.trim() === '') {
       setError('Adresse client requise — veuillez la saisir');
       return;
     }
@@ -482,16 +494,65 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
     setError('');
 
     try {
-      // Résoudre l'id numérique du client comme pour la réclamation
-      let clientIdNum: number | undefined;
-      try {
-        const clients = await clientService.getAll();
-        const authRaw = localStorage.getItem('user');
-        let authUser: any = null;
-        if (authRaw) authUser = JSON.parse(authRaw);
-        const resolved = (clients || []).find((c: any) => String(c.userId) === String(authUser?.id) || c.email === authUser?.email);
-        if (resolved && resolved.id) clientIdNum = resolved.id;
-      } catch {}
+      const resolveClientIdForPayload = async (): Promise<number> => {
+        if (!isClient) {
+          if (!selectedClientId) throw new Error('Veuillez sélectionner un client');
+          const numeric = Number(selectedClientId);
+          if (Number.isFinite(numeric) && numeric > 0) {
+            return numeric;
+          }
+
+          const selected = clients.find(c => String(c.id) === selectedClientId);
+          const targetEmail = selected?.email || form.clientEmail;
+          if (targetEmail) {
+            const existing = await clientService.getByEmail(String(targetEmail)).catch(() => null);
+            if (existing?.id) {
+              if (!clients.some(c => c.id === existing.id)) {
+                setClients(prev => [...prev, existing]);
+              }
+              setSelectedClientId(String(existing.id));
+              return existing.id;
+            }
+
+            const created = await clientService.create({
+              nom: selected?.nom || form.clientNom || 'Client SAV',
+              email: targetEmail,
+              telephone: selected?.telephone,
+              adresse: resolvedAdresse,
+            } as any);
+            setClients(prev => [...prev, created]);
+            setSelectedClientId(String(created.id));
+            return created.id;
+          }
+
+          throw new Error('Impossible de déterminer le client sélectionné');
+        }
+
+        if (selectedClientId) {
+          const numeric = Number(selectedClientId);
+          if (Number.isFinite(numeric) && numeric > 0) {
+            return numeric;
+          }
+        }
+
+        const targetEmail = authUser?.email || form.clientEmail;
+        if (targetEmail) {
+          const existing = await clientService.getByEmail(String(targetEmail)).catch(() => null);
+          if (existing?.id) return existing.id;
+
+          const created = await clientService.create({
+            nom: form.clientNom || authUser?.name || targetEmail.split('@')[0],
+            email: targetEmail,
+            telephone: authUser?.phoneNumber,
+            adresse: resolvedAdresse,
+          } as any);
+          return created.id;
+        }
+
+        throw new Error('Impossible de déterminer le client associé à votre compte');
+      };
+
+      const clientIdNum = await resolveClientIdForPayload();
 
       const payload: Partial<Facture> = {
         interventionId: Number(form.interventionId),
@@ -499,7 +560,7 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
         dateFacture: form.dateFacture ? `${form.dateFacture}T00:00:00` : new Date().toISOString(),
         clientNom: form.clientNom || '',
         clientEmail: form.clientEmail || '',
-        clientAdresse: form.clientAdresse || '',
+        clientAdresse: resolvedAdresse,
         montantHT: Number(form.montantHT) || 0,
         tva: Number(form.tva) || 0.19,
         statut: form.statut || 'En attente',
@@ -559,7 +620,7 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
         <Grid container spacing={3}>
           {/* Section Client */}
           <Grid item size={{ xs: 12 }}>
-            {isClient ? (
+            {isClientLocked ? (
               <TextField
                 label="Client"
                 fullWidth
@@ -679,7 +740,7 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <strong>Intervention #{intervention.id}</strong>
                       <Box sx={{ fontSize: '0.9em', color: '#1976d2', fontWeight: 600 }}>
-                        {intervention.coutTotal ? `${intervention.coutTotal.toFixed(2)} €` : 'Gratuit'}
+                        {intervention.coutTotal ? `${intervention.coutTotal.toFixed(2)} DNT` : 'Gratuit'}
                       </Box>
                     </Box>
                     <Box sx={{ fontSize: '0.85em', color: '#666', mt: 0.5 }}>
@@ -754,7 +815,7 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
               <Grid container spacing={2}>
                 <Grid item size={{ xs: 12, sm: 4 }}>
                   <TextField
-                    label="Montant HT (€)"
+                    label="Montant HT (DNT)"
                     type="number"
                     fullWidth
                     value={form.montantHT || ''}
@@ -764,7 +825,7 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
                     }))}
                     InputProps={{ 
                       inputProps: { min: 0, step: 0.01 },
-                      startAdornment: <span style={{ marginRight: '8px' }}>€</span>,
+                      startAdornment: <span style={{ marginRight: '8px' }}>DNT</span>,
                     }}
                   />
                 </Grid>
@@ -783,12 +844,12 @@ const FactureForm: React.FC<Props> = ({ open, interventions, facture, prefillInt
                 </Grid>
                 <Grid item size={{ xs: 12, sm: 4 }}>
                   <TextField
-                    label="Montant TTC (€)"
+                    label="Montant TTC (DNT)"
                     fullWidth
                     value={montantTTC.toFixed(2)}
                     disabled
                     InputProps={{
-                      startAdornment: <span style={{ marginRight: '8px', fontWeight: 600 }}>€</span>,
+                      startAdornment: <span style={{ marginRight: '8px', fontWeight: 600 }}>DNT</span>,
                     }}
                     sx={{
                       '& .MuiInputBase-input': {

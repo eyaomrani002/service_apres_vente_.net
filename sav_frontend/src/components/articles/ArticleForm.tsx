@@ -398,7 +398,7 @@ const ArticleForm: React.FC<Props> = ({ open, article, onClose, onSave }) => {
           <Grid item xs={12} sm={6}>
             <StyledTextField
               fullWidth
-              label="Prix d'achat (€) *"
+              label="Prix d'achat (DNT) *"
               type="number"
               value={form.prixAchat ?? ''}
               onChange={e => handleChange('prixAchat', e.target.value)}

@@ -17,7 +17,8 @@ const API_BASE = (
 const PDFGenerator: React.FC<PDFGeneratorProps> = ({ report }) => {
   const [loading, setLoading] = React.useState(false);
 
-  const buildGatewayPdfUrl = (id: string) => `${API_BASE}/reports/${id}/generate-pdf`;
+  // Utiliser l'endpoint GET /reports/{id}/pdf exposé par la gateway
+  const buildGatewayPdfUrl = (id: string) => `${API_BASE}/reports/${id}/pdf`;
 
   const isValidHttpUrl = (maybeUrl?: string) => {
     if (!maybeUrl) return false;
@@ -34,7 +35,7 @@ const PDFGenerator: React.FC<PDFGeneratorProps> = ({ report }) => {
       method: 'GET',
       credentials: 'include',
       headers: {
-        Authorization: `Bearer ${localStorage.getItem('accessToken')}`,
+        Authorization: `Bearer ${localStorage.getItem('accessToken') || localStorage.getItem('token') || ''}`,
       },
     });
 
@@ -75,10 +76,10 @@ const PDFGenerator: React.FC<PDFGeneratorProps> = ({ report }) => {
     try {
       // Générer le PDF côté serveur puis le télécharger
       const response = await fetch(buildGatewayPdfUrl(report.id), {
-        method: 'POST',
+        method: 'GET',
         credentials: 'include',
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('accessToken')}`,
+          Authorization: `Bearer ${localStorage.getItem('accessToken') || localStorage.getItem('token') || ''}`,
         },
       });
       

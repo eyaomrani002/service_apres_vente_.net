@@ -248,8 +248,8 @@ const InterventionsTable: React.FC<Props> = ({ items, onEdit, onDelete, onView, 
   };
 
   const formatCost = (cost: number | null | undefined) => {
-    if (cost === null || cost === undefined || cost === 0) return '0 €';
-    return `${cost.toFixed(2)} €`;
+    if (cost === null || cost === undefined || cost === 0) return '0 DNT';
+    return `${cost.toFixed(2)} DNT`;
   };
 
   const formatDuration = (minutes: number | null | undefined) => {

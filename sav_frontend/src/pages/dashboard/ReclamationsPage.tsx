@@ -289,29 +289,69 @@ const ReclamationsPage: React.FC = () => {
     try {
       const body: Partial<Reclamation> = { ...payload };
       
-      // Pour les clients non-admin/responsable, trouver l'ID numérique du client
-      if (!canViewAll && (currentClientId || user?.id)) {
-        try {
-          const clients = await clientService.getAll();
-          const userClient = clients.find((c: any) => 
-            c.userId === currentClientId || 
-            c.userId === user?.id || 
-            c.email === user?.email
-          );
-          
-          if (userClient && userClient.id) {
-            body.clientId = userClient.id;
-            console.log('Mapped clientId to numeric ID:', body.clientId);
-          } else {
-            console.warn('Could not find numeric client ID for user:', user?.email);
-            // Fallback: utiliser l'UUID (peut échouer mais au moins on essaie)
-            body.clientId = currentClientId || user?.id;
-          }
-        } catch (clientError) {
-          console.warn('Error finding client ID:', clientError);
-          body.clientId = currentClientId || user?.id;
+      const toNumericId = (value: unknown): number | null => {
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+        if (typeof value === 'string') {
+          const parsed = Number(value);
+          if (!Number.isNaN(parsed) && Number.isFinite(parsed)) return parsed;
         }
-      }
+        return null;
+      };
+
+      const ensureClientId = async (): Promise<number> => {
+        const numericCandidate = [body.clientId, currentClientId, user?.id]
+          .map(toNumericId)
+          .find((val): val is number => val !== null);
+
+        if (numericCandidate !== undefined && numericCandidate !== null) {
+          return numericCandidate;
+        }
+
+        const normalizedAuthIds = [body.clientId, currentClientId, user?.id]
+          .map((val) => (val == null ? null : String(val).toLowerCase()))
+          .filter(Boolean) as string[];
+        const normalizedEmail = user?.email?.toLowerCase();
+
+        const cached = clients.find((c) => {
+          const matchesAuth = c.userId && normalizedAuthIds.includes(String(c.userId).toLowerCase());
+          const matchesEmail = normalizedEmail && c.email?.toLowerCase() === normalizedEmail;
+          return Boolean(matchesAuth || matchesEmail);
+        });
+
+        if (cached?.id) {
+          console.log('Resolved clientId from cached clients list:', cached.id);
+          return cached.id;
+        }
+
+        if (normalizedEmail && user?.email) {
+          const fetched = await clientService.getByEmail(user.email).catch(() => null);
+          if (fetched?.id) {
+            setClients((prev) => prev.some((c) => c.id === fetched.id) ? prev : [...prev, fetched]);
+            console.log('Resolved clientId via email lookup:', fetched.id);
+            return fetched.id;
+          }
+        }
+
+        if (user?.email) {
+          const fallbackName = (user.firstName || user.lastName)
+            ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim()
+            : (user.name || user.email.split('@')[0]);
+
+          const created = await clientService.create({
+            nom: fallbackName || 'Client SAV',
+            email: user.email,
+            telephone: (user as any)?.phoneNumber || (user as any)?.phone_number,
+          } as any);
+
+          setClients((prev) => [...prev, created]);
+          console.log('Resolved clientId by creating a client record:', created.id);
+          return created.id;
+        }
+
+        throw new Error('Impossible de déterminer le client associé à votre compte. Contactez le support.');
+      };
+
+      body.clientId = await ensureClientId();
 
       if (editing) {
         await reclamationService.update(editing.id, body);

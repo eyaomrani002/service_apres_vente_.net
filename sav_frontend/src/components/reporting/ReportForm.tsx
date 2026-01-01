@@ -161,6 +161,8 @@ const ReportForm: React.FC<Props> = ({
   const updateInterventionsForClient = (clientId: string) => {
     if (!clientId) {
       setAvailableInterventions(interventions);
+      // Réinitialiser l'intervention quand aucun client n'est sélectionné
+      setForm(prev => ({ ...prev, interventionId: '' }));
       return;
     }
     
@@ -179,12 +181,11 @@ const ReportForm: React.FC<Props> = ({
     setAvailableInterventions(sortedInterventions);
     
     // Si l'intervention actuelle n'est pas dans la liste, la réinitialiser
-    if (form.interventionId) {
-      const isValid = sortedInterventions.some(i => String(i.id) === String(form.interventionId));
-      if (!isValid) {
-        setForm(prev => ({ ...prev, interventionId: '' }));
-      }
-    }
+    setForm(prev => {
+      if (!prev.interventionId) return prev;
+      const isValid = sortedInterventions.some(i => String(i.id) === String(prev.interventionId));
+      return isValid ? prev : { ...prev, interventionId: '' };
+    });
   };
 
   // Gérer la sélection d'un client
@@ -471,7 +472,7 @@ const ReportForm: React.FC<Props> = ({
                           )}
                         </Box>
                         <Chip 
-                          label={intervention.coutTotal ? `${intervention.coutTotal.toFixed(2)}€` : 'Gratuit'} 
+                          label={intervention.coutTotal ? `${intervention.coutTotal.toFixed(2)}DNT` : 'Gratuit'} 
                           size="small" 
                           color={intervention.coutTotal ? "primary" : "success"}
                           variant="outlined"
@@ -562,7 +563,7 @@ const ReportForm: React.FC<Props> = ({
                 Montant
               </Typography>
               <TextField
-                label="Montant total (€)"
+                label="Montant total (DNT)"
                 type="number"
                 fullWidth
                 value={form.total || ''}
@@ -572,7 +573,7 @@ const ReportForm: React.FC<Props> = ({
                 }))}
                 InputProps={{ 
                   inputProps: { min: 0, step: 0.01 },
-                  startAdornment: <InputAdornment position="start">€</InputAdornment>,
+                  startAdornment: <InputAdornment position="start">DNT</InputAdornment>,
                 }}
               />
             </Box>

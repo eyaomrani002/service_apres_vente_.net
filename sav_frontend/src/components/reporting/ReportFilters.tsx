@@ -589,14 +589,14 @@ const ReportFilters: React.FC<Props> = ({ onSearch }) => {
                 )}
                 {montantMin && (
                   <Chip
-                    label={`Min: ${montantMin}€`}
+                    label={`Min: ${montantMin}DNT`}
                     size="small"
                     onDelete={() => setMontantMin('')}
                   />
                 )}
                 {montantMax && (
                   <Chip
-                    label={`Max: ${montantMax}€`}
+                    label={`Max: ${montantMax}DNT`}
                     size="small"
                     onDelete={() => setMontantMax('')}
                   />

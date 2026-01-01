@@ -993,7 +993,7 @@ const InterventionForm: React.FC<Props> = ({ open, intervention, onClose, onSave
                   <Grid item xs={12} sm={6}>
                     <StyledTextField
                       fullWidth
-                      label="Coût des pièces (€)"
+                      label="Coût des pièces (DNT)"
                       type="number"
                       value={form.coutPieces ?? ''}
                       onChange={e => handleChange('coutPieces', e.target.value)}
@@ -1020,7 +1020,7 @@ const InterventionForm: React.FC<Props> = ({ open, intervention, onClose, onSave
                   <Grid item xs={12} sm={6}>
                     <StyledTextField
                       fullWidth
-                      label="Main d'œuvre (€)"
+                      label="Main d'œuvre (DNT)"
                       type="number"
                       value={form.coutMainOeuvre ?? ''}
                       onChange={e => handleChange('coutMainOeuvre', e.target.value)}
@@ -1061,7 +1061,7 @@ const InterventionForm: React.FC<Props> = ({ open, intervention, onClose, onSave
                 <Typography variant="h6" sx={{ fontWeight: 800, color: '#FF9800' }}>
                   {form.estGratuite 
                     ? 'GRATUIT' 
-                    : `${((form.coutPieces || 0) + (form.coutMainOeuvre || 0)).toFixed(2)} €`
+                    : `${((form.coutPieces || 0) + (form.coutMainOeuvre || 0)).toFixed(2)} DNT`
                   }
                 </Typography>
               </Box>

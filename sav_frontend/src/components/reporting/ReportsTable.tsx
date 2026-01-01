@@ -57,7 +57,8 @@ const ReportsTable: React.FC<Props> = ({ reports, onView, onEdit, onDelete }) =>
     'https://localhost:7076/apigateway'
   ).replace(/\/$/, ''), []);
 
-  const buildGatewayPdfUrl = (id: string) => `${API_BASE}/reports/${id}/generate-pdf`;
+  // Gateway maps both /generate-pdf and /pdf to the same backend GET endpoint; prefer the concrete /pdf path
+  const buildGatewayPdfUrl = (id: string) => `${API_BASE}/reports/${id}/pdf`;
 
   const isValidHttpUrl = (maybeUrl?: string) => {
     if (!maybeUrl) return false;
@@ -79,7 +80,7 @@ const ReportsTable: React.FC<Props> = ({ reports, onView, onEdit, onDelete }) =>
       }
 
       const response = await fetch(buildGatewayPdfUrl(report.id), {
-        method: 'POST',
+        method: 'GET',
         credentials: 'include',
         headers: {
           Authorization: `Bearer ${localStorage.getItem('accessToken') || localStorage.getItem('token') || ''}`,
